@@ -93,11 +93,11 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // ============================================================================
-// 2. CRIPTOGRAFIA ZERO-KNOWLEDGE (SHA-256 + AES-256-GCM + TOKENS SEGUROS)
+// 2. CRIPTOGRAFIA ZERO-KNOWLEDGE (ACESSO DIRETO PELO LINK EXCLUSIVO)
 // ============================================================================
 
 /**
- * Gera um hash SHA-256 hexadecimal
+ * Gera um hash SHA-256 hexadecimal (usado apenas na senha do Administrador)
  */
 async function sha256Hash(text, salt = 'natal-familia-2026-sec') {
   const payload = `${salt}::${String(text).trim()}`;
@@ -109,11 +109,11 @@ async function sha256Hash(text, salt = 'natal-familia-2026-sec') {
 }
 
 /**
- * Deriva uma chave criptográfica AES-GCM de 256 bits a partir do Token + PIN de 6 dígitos
+ * Deriva uma chave criptográfica AES-GCM de 256 bits a partir do Token exclusivo do link
  */
-async function deriveAesKey(token, pin) {
+async function deriveAesKeyFromToken(token) {
   const rawKeyMaterial = new TextEncoder().encode(
-    `zk-secret-santa::${String(token).trim().toLowerCase()}::${String(pin).trim()}`
+    `zk-direct-link-2026::${String(token).trim().toLowerCase()}`
   );
   const hashBuffer = await crypto.subtle.digest('SHA-256', rawKeyMaterial);
   return crypto.subtle.importKey(
@@ -126,11 +126,11 @@ async function deriveAesKey(token, pin) {
 }
 
 /**
- * Criptografa o resultado individual do participante com AES-256-GCM.
- * Nem mesmo o administrador com acesso ao banco consegue ler quem tirou quem sem o PIN!
+ * Criptografa o resultado individual do participante usando o Token do seu link exclusivo.
+ * Assim o familiar abre direto sem precisar digitar código, e o painel admin continua sem expor os pares!
  */
-async function encryptSecretResult(token, pin, payloadObject) {
-  const key = await deriveAesKey(token, pin);
+async function encryptSecretResult(token, payloadObject) {
+  const key = await deriveAesKeyFromToken(token);
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const encodedData = new TextEncoder().encode(JSON.stringify(payloadObject));
   const encryptedBuffer = await crypto.subtle.encrypt(
@@ -150,10 +150,10 @@ async function encryptSecretResult(token, pin, payloadObject) {
 }
 
 /**
- * Descriptografa o resultado individual exclusivamente quando o participante digita o PIN correto
+ * Descriptografa o resultado automaticamente assim que o participante abre seu link exclusivo
  */
-async function decryptSecretResult(token, pin, encryptedHex, ivHex) {
-  const key = await deriveAesKey(token, pin);
+async function decryptSecretResult(token, encryptedHex, ivHex) {
+  const key = await deriveAesKeyFromToken(token);
   const encryptedBytes = new Uint8Array(
     encryptedHex.match(/.{1,2}/g).map((byte) => parseInt(byte, 16))
   );
@@ -172,24 +172,14 @@ async function decryptSecretResult(token, pin, encryptedHex, ivHex) {
 }
 
 /**
- * Gera um token imprevisível de 8 caracteres hexadecimais (ex: 8f7a2c91)
+ * Gera um token imprevisível de 10 caracteres hexadecimais (ex: 8f7a2c91b4)
  */
 function generateSecureToken() {
-  const bytes = new Uint8Array(4);
+  const bytes = new Uint8Array(5);
   crypto.getRandomValues(bytes);
   return Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
-}
-
-/**
- * Gera um código numérico criptograficamente seguro de exatos 6 dígitos (ex: 583921)
- */
-function generateSixDigitPin() {
-  const array = new Uint32Array(1);
-  crypto.getRandomValues(array);
-  const pin = 100000 + (array[0] % 900000);
-  return String(pin);
 }
 
 /**
@@ -275,7 +265,7 @@ function createSecretSantaDerangement(participants) {
 }
 
 /**
- * Parser CSV inteligente (suporta vírgula ou ponto-e-vírgula e campos entre aspas)
+ * Parser CSV simplificado (focado apenas em nome e telefone)
  */
 function parseCsvText(csvString) {
   const lines = String(csvString || '')
@@ -286,7 +276,6 @@ function parseCsvText(csvString) {
 
   if (lines.length === 0) return [];
 
-  // Detecta delimitador (, ou ;)
   const firstLine = lines[0];
   const delimiter =
     (firstLine.match(/;/g) || []).length > (firstLine.match(/,/g) || []).length
@@ -316,7 +305,6 @@ function parseCsvText(csvString) {
     normalizeText(h).replace(/\s+/g, '_')
   );
 
-  // Verifica se a primeira linha é cabeçalho
   const hasHeader =
     headers.includes('nome') ||
     headers.includes('telefone') ||
@@ -342,30 +330,12 @@ function parseCsvText(csvString) {
         tempId: `csv_${i}_${Date.now()}`,
         nome: getCol(['nome', 'participante', 'nome_completo'], 0),
         telefone: getCol(['telefone', 'whatsapp', 'celular', 'fone'], 1),
-        gostaria_de_ganhar: getCol(
-          ['gostaria_de_ganhar', 'presente', 'desejos', 'quer_ganhar'],
-          2
-        ),
-        nao_gostaria_de_ganhar: getCol(
-          ['nao_gostaria_de_ganhar', 'nao_quer', 'restricoes'],
-          3
-        ),
-        tamanho_calcado: getCol(['tamanho_calcado', 'calcado', 'sapato'], 4),
-        tamanho_camisa: getCol(['tamanho_camisa', 'camisa', 'blusa'], 5),
-        tamanho_calca: getCol(['tamanho_calca', 'calca'], 6),
-        observacoes: getCol(['observacoes', 'obs', 'preferencias'], 7),
       });
     } else {
       rows.push({
         tempId: `csv_${i}_${Date.now()}`,
         nome: cols[0] || '',
         telefone: cols[1] || '',
-        gostaria_de_ganhar: cols[2] || '',
-        nao_gostaria_de_ganhar: cols[3] || '',
-        tamanho_calcado: cols[4] || '',
-        tamanho_camisa: cols[5] || '',
-        tamanho_calca: cols[6] || '',
-        observacoes: cols[7] || '',
       });
     }
   }
@@ -398,6 +368,21 @@ function extractTokenFromLocation() {
     // Ignora erros de leitura em iframes restritos
   }
   return null;
+}
+
+/**
+ * Verifica se o participante já preencheu alguma dica de presente
+ */
+function hasFilledGiftHints(p) {
+  if (!p) return false;
+  return Boolean(
+    (p.wantToGet && p.wantToGet.trim()) ||
+      (p.dontWantToGet && p.dontWantToGet.trim()) ||
+      (p.shoeSize && p.shoeSize.trim()) ||
+      (p.shirtSize && p.shirtSize.trim()) ||
+      (p.pantsSize && p.pantsSize.trim()) ||
+      (p.observations && p.observations.trim())
+  );
 }
 
 // ============================================================================
@@ -518,7 +503,7 @@ export default function App() {
   const [firebaseUser, setFirebaseUser] = useState(null);
   const [loadingFirebase, setLoadingFirebase] = useState(true);
 
-  // Coleções sincronizadas do Firestore
+  // Coleções sincronizadas do Firestore em Tempo Real
   const [systemConfig, setSystemConfig] = useState(null);
   const [participants, setParticipants] = useState([]);
   const [accessTokens, setAccessTokens] = useState([]);
@@ -545,26 +530,20 @@ export default function App() {
   // Filtros e Buscas de Participantes
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Modal de Cadastro / Edição Manual de Participante
+  // Modal de Cadastro / Edição Simplificado (Apenas Nome e WhatsApp para o Admin)
   const [participantModalOpen, setParticipantModalOpen] = useState(false);
   const [editingParticipantId, setEditingParticipantId] = useState(null);
   const [formName, setFormName] = useState('');
   const [formPhone, setFormPhone] = useState('');
-  const [formWant, setFormWant] = useState('');
-  const [formDontWant, setFormDontWant] = useState('');
-  const [formShoe, setFormShoe] = useState('');
-  const [formShirt, setFormShirt] = useState('');
-  const [formPants, setFormPants] = useState('');
-  const [formNotes, setFormNotes] = useState('');
 
-  // Modal de Importação CSV com Prévia Editável
+  // Modal de Importação CSV Simplificado (Nome e Telefone)
   const [csvModalOpen, setCsvModalOpen] = useState(false);
   const [csvPreviewRows, setCsvPreviewRows] = useState([]);
   const [csvRawText, setCsvRawText] = useState('');
   const fileInputRef = useRef(null);
 
   // Estados do Motor de Disparo 100% Automático de WhatsApp
-  const [waProvider, setWaProvider] = useState('zapi'); // 'zapi' | 'evolution' | 'ultramsg' | 'webhook' | 'wame_assist'
+  const [waProvider, setWaProvider] = useState('ultramsg'); // 'ultramsg' | 'zapi' | 'evolution' | 'webhook' | 'wame_assist'
   const [waInstanceUrl, setWaInstanceUrl] = useState('');
   const [waInstanceId, setWaInstanceId] = useState('');
   const [waApiToken, setWaApiToken] = useState('');
@@ -587,15 +566,19 @@ export default function App() {
   const [eventValueInput, setEventValueInput] = useState(
     'R$ 100,00 a R$ 150,00'
   );
-  const [urlFormatPreference, setUrlFormatPreference] = useState('path'); // 'path' (/amigo-secreto/token) ou 'query' (?amigo-secreto=token)
+  const [urlFormatPreference, setUrlFormatPreference] = useState('path');
 
-  // Estados da Página Individual do Participante (Ambiente 2)
-  const [pinInput, setPinInput] = useState('');
-  const [participantStep, setParticipantStep] = useState('validation'); // 'validation' | 'animating' | 'revealed'
+  // Estados da Página Individual do Participante (Ambiente 2 - Acesso Direto Sem Código!)
   const [decryptedResult, setDecryptedResult] = useState(null);
-  const [showGiftSuggestions, setShowGiftSuggestions] = useState(false);
-  const [validationError, setValidationError] = useState('');
-  const [isVerifyingPin, setIsVerifyingPin] = useState(false);
+  const [isDecryptingLink, setIsDecryptingLink] = useState(false);
+  const [myHintsModalOpen, setMyHintsModalOpen] = useState(false);
+  const [myWant, setMyWant] = useState('');
+  const [myDontWant, setMyDontWant] = useState('');
+  const [myShirt, setMyShirt] = useState('');
+  const [myPants, setMyPants] = useState('');
+  const [myShoe, setMyShoe] = useState('');
+  const [myNotes, setMyNotes] = useState('');
+  const [savingMyHints, setSavingMyHints] = useState(false);
 
   // Modais e Notificações Globais
   const [toast, setToast] = useState(null);
@@ -730,14 +713,13 @@ export default function App() {
   }, [firebaseUser]);
 
   // ============================================================================
-  // 6. DADOS DERIVADOS E VALIDAÇÕES EM MEMÓRIA
+  // 6. DADOS DERIVADOS, DESCRIPTOGRAFIA AUTOMÁTICA E SINCRONIZAÇÃO EM TEMPO REAL
   // ============================================================================
 
   const eventName =
     systemConfig?.eventName || 'Amigo Secreto da Família 2026';
-  const drawStatus = systemConfig?.drawStatus || 'waiting'; // 'waiting' | 'drawn'
+  const drawStatus = systemConfig?.drawStatus || 'waiting';
 
-  // Filtra participantes pelo nome ou pelo telefone
   const filteredParticipants = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     const qDigits = sanitizePhone(searchQuery);
@@ -749,7 +731,6 @@ export default function App() {
     });
   }, [participants, searchQuery]);
 
-  // Validação em tempo real das linhas da prévia CSV
   const validatedCsvRows = useMemo(() => {
     const existingPhones = new Set(
       participants.map((p) => sanitizePhone(p.phone))
@@ -805,7 +786,17 @@ export default function App() {
     );
   }, [accessTokens, activeParticipantToken]);
 
-  // Busca dados atualizados da pessoa sorteada após descriptografia
+  // Registro do PRÓPRIO participante dono do link (para preencher "Minhas Dicas de Presente")
+  const myOwnParticipantDoc = useMemo(() => {
+    if (!currentParticipantTokenDoc) return null;
+    return (
+      participants.find(
+        (p) => p.id === currentParticipantTokenDoc.participantId
+      ) || null
+    );
+  }, [participants, currentParticipantTokenDoc]);
+
+  // Registro em TEMPO REAL da PESSOA SORTEADA (sempre que ela atualizar as dicas dela, atualiza aqui na hora!)
   const drawnPersonLatestData = useMemo(() => {
     if (!decryptedResult) return null;
     const found = participants.find(
@@ -813,6 +804,60 @@ export default function App() {
     );
     return found || decryptedResult;
   }, [decryptedResult, participants]);
+
+  // Descriptografa AUTOMATICAMENTE o Amigo Secreto assim que o familiar abre o link exclusivo (Sem precisar de código!)
+  useEffect(() => {
+    let isMounted = true;
+    const autoRevealFromLink = async () => {
+      if (!currentParticipantTokenDoc || !firebaseUser) {
+        setDecryptedResult(null);
+        return;
+      }
+
+      setIsDecryptingLink(true);
+      try {
+        const secretData = await decryptSecretResult(
+          currentParticipantTokenDoc.token,
+          currentParticipantTokenDoc.encryptedPayload,
+          currentParticipantTokenDoc.iv
+        );
+
+        if (!isMounted) return;
+        setDecryptedResult(secretData);
+
+        // Registra que o participante já abriu seu link (apenas se não for simulação do admin)
+        if (
+          !isSimulatingParticipant &&
+          !currentParticipantTokenDoc.hasAccessedResult
+        ) {
+          await updateDoc(
+            doc(
+              db,
+              'artifacts',
+              appId,
+              'public',
+              'data',
+              'access_tokens',
+              currentParticipantTokenDoc.id
+            ),
+            {
+              hasAccessedResult: true,
+              lastAccessedAt: new Date().toISOString(),
+            }
+          );
+        }
+      } catch (err) {
+        console.error('Erro ao descriptografar link direto:', err);
+      } finally {
+        if (isMounted) setIsDecryptingLink(false);
+      }
+    };
+
+    autoRevealFromLink();
+    return () => {
+      isMounted = false;
+    };
+  }, [currentParticipantTokenDoc?.id, firebaseUser, isSimulatingParticipant]);
 
   // Gera a URL exclusiva de um participante
   const buildParticipantLink = (token) => {
@@ -823,31 +868,26 @@ export default function App() {
     return `${origin}/amigo-secreto/${token}`;
   };
 
-  // Monta a mensagem oficial personalizada do WhatsApp conforme especificação
-  const buildWhatsAppMessage = (participantName, token, pin, maskPin = false) => {
-    const firstName = String(participantName || '')
+  // ============================================================================
+  // PERSONALIZAÇÃO DA MENSAGEM DO WHATSAPP (SEM CÓDIGO, DIRETO NO LINK!)
+  // ============================================================================
+  const buildWhatsAppMessage = (participantName, token) => {
+    const firstName = String(participantName || 'Familiar')
       .trim()
       .split(' ')[0];
     const link = buildParticipantLink(token);
-    const displayPin = maskPin ? '•••••• (Enviado automaticamente)' : pin;
 
-    return `🎄 Oi, ${firstName}!
+    return `🎄 Oi, *${firstName}*!
 
-O sorteio do ${eventName} foi realizado!
+O sorteio do *${eventName}* foi realizado! 🎅🎁
 
-Seu amigo secreto já foi definido. 🤫🎁
+Para ver agora mesmo quem você tirou (e também deixar suas dicas do que você gostaria de ganhar), basta clicar no seu link exclusivo abaixo:
 
-Para descobrir quem você tirou, acesse seu link exclusivo:
+👉 ${link}
 
-${link}
+🤫 *Importante:* Esse link é só seu! Não compartilhe com ninguém para manter o segredo da brincadeira.
 
-Seu código de acesso é: ${displayPin}
-
-Digite esse código na página para descobrir seu amigo secreto.
-
-Guarde esse link e não compartilhe seu resultado com outras pessoas!
-
-Boas festas! 🎅🎄`;
+Boas festas! 🎄✨`;
   };
 
   // ============================================================================
@@ -860,7 +900,10 @@ Boas festas! 🎅🎄`;
 
     const cleanUser = adminUserInput.trim();
     if (cleanUser.length < 3) {
-      showToast('O usuário do administrador deve ter pelo menos 3 caracteres.', 'error');
+      showToast(
+        'O usuário do administrador deve ter pelo menos 3 caracteres.',
+        'error'
+      );
       return;
     }
     if (adminPassInput.length < 4) {
@@ -949,19 +992,13 @@ Boas festas! 🎅🎄`;
   };
 
   // ============================================================================
-  // 8. GERENCIAMENTO MANUAL E IMPORTAÇÃO CSV DE PARTICIPANTES
+  // 8. GERENCIAMENTO SIMPLIFICADO DE PARTICIPANTES (SÓ NOME E WHATSAPP)
   // ============================================================================
 
   const openNewParticipantModal = () => {
     setEditingParticipantId(null);
     setFormName('');
     setFormPhone('');
-    setFormWant('');
-    setFormDontWant('');
-    setFormShoe('');
-    setFormShirt('');
-    setFormPants('');
-    setFormNotes('');
     setParticipantModalOpen(true);
   };
 
@@ -969,12 +1006,6 @@ Boas festas! 🎅🎄`;
     setEditingParticipantId(p.id);
     setFormName(p.fullName || '');
     setFormPhone(formatPhoneDisplay(p.phone || ''));
-    setFormWant(p.wantToGet || '');
-    setFormDontWant(p.dontWantToGet || '');
-    setFormShoe(p.shoeSize || '');
-    setFormShirt(p.shirtSize || '');
-    setFormPants(p.pantsSize || '');
-    setFormNotes(p.observations || '');
     setParticipantModalOpen(true);
   };
 
@@ -997,7 +1028,6 @@ Boas festas! 🎅🎄`;
       return;
     }
 
-    // Impede duplicados (mesmo telefone ou mesmo nome)
     const duplicatePhone = participants.find(
       (p) =>
         p.id !== editingParticipantId && sanitizePhone(p.phone) === cleanPhone
@@ -1033,12 +1063,6 @@ Boas festas! 🎅🎄`;
         id: partId,
         fullName: cleanName,
         phone: cleanPhone,
-        wantToGet: formWant.trim(),
-        dontWantToGet: formDontWant.trim(),
-        shoeSize: formShoe.trim(),
-        shirtSize: formShirt.trim(),
-        pantsSize: formPants.trim(),
-        observations: formNotes.trim(),
         active: true,
         updatedAt: new Date().toISOString(),
       };
@@ -1049,7 +1073,7 @@ Boas festas! 🎅🎄`;
         { merge: true }
       );
 
-      // Se já houver token gerado e o admin corrigiu o telefone, sincroniza o telefone no token
+      // Sincroniza nome e telefone caso já tenha sido sorteado
       const linkedToken = accessTokens.find((t) => t.participantId === partId);
       if (linkedToken) {
         await updateDoc(
@@ -1117,13 +1141,13 @@ Boas festas! 🎅🎄`;
     });
   };
 
-  // Download do Modelo Oficial CSV
+  // Modelo CSV Simplificado: apenas nome e telefone!
   const handleDownloadCsvTemplate = () => {
     const sampleCsv = [
-      'nome,telefone,gostaria_de_ganhar,nao_gostaria_de_ganhar,tamanho_calcado,tamanho_camisa,tamanho_calca,observacoes',
-      'Pedro Henrique,31999999999,Perfume e camiseta,Meias,40,M,40,Gosta de tecnologia',
-      'Maria Silva,31988888888,Livros e bolsas,Chocolate,36,P,38,Gosta de leitura',
-      'João Santos,31977777777,Relógios e acessórios,Canecas,42,G,G,Prefere presentes úteis',
+      'nome,telefone',
+      'Pedro Henrique,31999999999',
+      'Maria Silva,31988888888',
+      'João Santos,31977777777',
     ].join('\n');
 
     const blob = new Blob(['\uFEFF' + sampleCsv], {
@@ -1183,12 +1207,12 @@ Boas festas! 🎅🎄`;
             id: partId,
             fullName: row.nome.trim(),
             phone: row.cleanPhone,
-            wantToGet: (row.gostaria_de_ganhar || '').trim(),
-            dontWantToGet: (row.nao_gostaria_de_ganhar || '').trim(),
-            shoeSize: (row.tamanho_calcado || '').trim(),
-            shirtSize: (row.tamanho_camisa || '').trim(),
-            pantsSize: (row.tamanho_calca || '').trim(),
-            observations: (row.observacoes || '').trim(),
+            wantToGet: '',
+            dontWantToGet: '',
+            shoeSize: '',
+            shirtSize: '',
+            pantsSize: '',
+            observations: '',
             active: true,
             updatedAt: new Date().toISOString(),
           }
@@ -1210,7 +1234,7 @@ Boas festas! 🎅🎄`;
   };
 
   // ============================================================================
-  // 9. SISTEMA DE SORTEIO COM PRIVACIDADE ZERO-KNOWLEDGE (NEM O ADMIN VÊ)
+  // 9. SISTEMA DE SORTEIO DIRETO (SEM CÓDIGO PIN, PROTEGIDO PELO LINK)
   // ============================================================================
 
   const handleRequestDraw = () => {
@@ -1224,7 +1248,7 @@ Boas festas! 🎅🎄`;
 
     setConfirmModal({
       title: 'Realizar Sorteio Oficial?',
-      description: `O sorteio será realizado agora envolvendo ${participants.length} participantes cadastrados. Cada pessoa receberá um link exclusivo e um código criptografado de 6 dígitos. Para garantir sigilo total, nem mesmo o painel administrativo exibirá quem tirou quem.`,
+      description: `O sorteio será realizado agora envolvendo ${participants.length} participantes. Cada familiar receberá um link direto exclusivo pelo WhatsApp: ao clicar no link, já verá quem tirou e poderá preencher suas próprias dicas de presente!`,
       confirmText: `Confirmar e Sortear (${participants.length} Participantes)`,
       danger: false,
       onConfirm: executeZeroKnowledgeDraw,
@@ -1235,7 +1259,6 @@ Boas festas! 🎅🎄`;
     setConfirmModal(null);
     setIsBusy(true);
     try {
-      // 1. Remove tokens de sorteios anteriores caso existam
       for (const oldToken of accessTokens) {
         await deleteDoc(
           doc(
@@ -1250,12 +1273,10 @@ Boas festas! 🎅🎄`;
         );
       }
 
-      // 2. Gera os pares garantindo ciclo fechado sem repetições (Derangement)
       const pairs = createSecretSantaDerangement(participants);
       const usedTokens = new Set();
       const nowIso = new Date().toISOString();
 
-      // 3. Para cada participante, gera Token + PIN de 6 dígitos e criptografa o resultado com AES-256-GCM
       for (const { giver, receiver } of pairs) {
         let token = generateSecureToken();
         while (usedTokens.has(token)) {
@@ -1263,29 +1284,17 @@ Boas festas! 🎅🎄`;
         }
         usedTokens.add(token);
 
-        const pin = generateSixDigitPin();
-        const pinHash = await sha256Hash(pin, `token_pin::${token}`);
-
-        // Pacote secreto que SÓ pode ser descriptografado com o PIN do participante
         const secretPayload = {
           receiverId: receiver.id,
           receiverName: receiver.fullName,
-          wantToGet: receiver.wantToGet || '',
-          dontWantToGet: receiver.dontWantToGet || '',
-          shoeSize: receiver.shoeSize || '',
-          shirtSize: receiver.shirtSize || '',
-          pantsSize: receiver.pantsSize || '',
-          observations: receiver.observations || '',
           drawnAt: nowIso,
         };
 
         const { encryptedHex, ivHex } = await encryptSecretResult(
           token,
-          pin,
           secretPayload
         );
 
-        // Salva no Firestore sem expor em texto puro quem o participante tirou!
         await setDoc(
           doc(
             db,
@@ -1302,22 +1311,16 @@ Boas festas! 🎅🎄`;
             participantId: giver.id,
             participantName: giver.fullName,
             participantPhone: giver.phone,
-            pinHash,
-            // Armazenado em formato codificado exclusivamente para o motor de disparo enviar o WhatsApp do dono do link
-            dispatchCodeEncoded: btoa(`${token}:${pin}`),
             encryptedPayload: encryptedHex,
             iv: ivHex,
-            whatsappStatus: 'pending', // 'pending' | 'sent' | 'error'
+            whatsappStatus: 'pending',
             whatsappSentAt: null,
             hasAccessedResult: false,
-            attempts: 0,
-            lockedUntil: null,
             createdAt: nowIso,
           }
         );
       }
 
-      // 4. Atualiza o status geral do sorteio
       await setDoc(
         doc(
           db,
@@ -1338,7 +1341,7 @@ Boas festas! 🎅🎄`;
 
       setAdminTab('whatsapp_dispatch');
       showToast(
-        'Sorteio concluído com sucesso! Links e códigos individuais gerados.'
+        'Sorteio concluído! Links diretos exclusivos prontos para disparo no WhatsApp.'
       );
     } catch (err) {
       console.error('Erro ao realizar sorteio:', err);
@@ -1352,7 +1355,7 @@ Boas festas! 🎅🎄`;
     setConfirmModal({
       title: 'Cancelar e Reiniciar Sorteio?',
       description:
-        'ATENÇÃO: Todos os links individuais e códigos de 6 dígitos enviados anteriormente deixarão de funcionar imediatamente. Esta ação permite editar ou adicionar participantes para realizar um novo sorteio.',
+        'ATENÇÃO: Todos os links individuais enviados anteriormente deixarão de funcionar imediatamente. As dicas de presentes já preenchidas pelos familiares serão preservadas.',
       confirmText: 'Sim, Invalidar Sorteio Atual',
       danger: true,
       onConfirm: async () => {
@@ -1405,25 +1408,90 @@ Boas festas! 🎅🎄`;
   };
 
   // ============================================================================
-  // 10. MOTOR DE DISPARO 100% AUTOMÁTICO DE WHATSAPP (API + FILA INTELIGENTE)
+  // 10. SALVAR DICAS DE PRESENTE PELO PRÓPRIO PARTICIPANTE (EM TEMPO REAL!)
   // ============================================================================
 
-  const decodePinFromTokenDoc = (tokenDoc) => {
+  const handleOpenMyGiftHintsModal = () => {
+    setMyWant(myOwnParticipantDoc?.wantToGet || '');
+    setMyDontWant(myOwnParticipantDoc?.dontWantToGet || '');
+    setMyShirt(myOwnParticipantDoc?.shirtSize || '');
+    setMyPants(myOwnParticipantDoc?.pantsSize || '');
+    setMyShoe(myOwnParticipantDoc?.shoeSize || '');
+    setMyNotes(myOwnParticipantDoc?.observations || '');
+    setMyHintsModalOpen(true);
+  };
+
+  const handleSaveMyGiftHints = async (e) => {
+    e.preventDefault();
+    if (!currentParticipantTokenDoc?.participantId) return;
+
+    setSavingMyHints(true);
     try {
-      if (!tokenDoc?.dispatchCodeEncoded) return '******';
-      const decoded = atob(tokenDoc.dispatchCodeEncoded);
-      const parts = decoded.split(':');
-      return parts[1] || '******';
-    } catch (e) {
-      return '******';
+      await setDoc(
+        doc(
+          db,
+          'artifacts',
+          appId,
+          'public',
+          'data',
+          'participants',
+          currentParticipantTokenDoc.participantId
+        ),
+        {
+          wantToGet: myWant.trim(),
+          dontWantToGet: myDontWant.trim(),
+          shirtSize: myShirt.trim(),
+          pantsSize: myPants.trim(),
+          shoeSize: myShoe.trim(),
+          observations: myNotes.trim(),
+          hintsUpdatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+
+      setMyHintsModalOpen(false);
+      showToast(
+        'Suas dicas de presente foram salvas! Quem tirou você já consegue ver tudo atualizado. 🎁'
+      );
+    } catch (err) {
+      console.error('Erro ao salvar dicas:', err);
+      showToast('Erro ao salvar suas dicas. Tente novamente.', 'error');
+    } finally {
+      setSavingMyHints(false);
     }
   };
 
-  /**
-   * Dispara uma mensagem de WhatsApp via API configurada (Z-API, Evolution API, UltraMsg ou Webhook)
-   */
+  // ============================================================================
+  // 11. MOTOR DE DISPARO 100% AUTOMÁTICO DE WHATSAPP (ULTRAMSG, Z-API, EVOLUTION)
+  // ============================================================================
+
   const sendWhatsAppViaApiGateway = async (phone, messageText, tokenDoc) => {
     const formattedPhone = formatPhoneForWhatsApp(phone);
+
+    if (waProvider === 'ultramsg') {
+      if (!waInstanceId.trim() || !waApiToken.trim()) {
+        throw new Error('Preencha a Instância e o Token da UltraMsg.');
+      }
+      const rawInst = waInstanceId.trim();
+      const instancePath = rawInst.startsWith('instance')
+        ? rawInst
+        : `instance${rawInst}`;
+      const url = `https://api.ultramsg.com/${instancePath}/messages/chat`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: waApiToken.trim(),
+          to: `+${formattedPhone}`,
+          body: messageText,
+        }),
+      });
+      if (!res.ok) {
+        const errBody = await res.text();
+        throw new Error(`UltraMsg HTTP ${res.status}: ${errBody.slice(0, 100)}`);
+      }
+      return true;
+    }
 
     if (waProvider === 'zapi') {
       if (!waInstanceId.trim() || !waApiToken.trim()) {
@@ -1481,27 +1549,6 @@ Boas festas! 🎅🎄`;
       return true;
     }
 
-    if (waProvider === 'ultramsg') {
-      if (!waInstanceId.trim() || !waApiToken.trim()) {
-        throw new Error('Preencha a Instância e o Token da UltraMsg.');
-      }
-      const url = `https://api.ultramsg.com/${waInstanceId.trim()}/messages/chat`;
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: waApiToken.trim(),
-          to: `+${formattedPhone}`,
-          body: messageText,
-        }),
-      });
-      if (!res.ok) {
-        const errBody = await res.text();
-        throw new Error(`UltraMsg HTTP ${res.status}: ${errBody.slice(0, 100)}`);
-      }
-      return true;
-    }
-
     if (waProvider === 'webhook') {
       if (!waInstanceUrl.trim()) {
         throw new Error('Informe a URL do Webhook / API de disparo.');
@@ -1530,9 +1577,6 @@ Boas festas! 🎅🎄`;
     throw new Error('Selecione um provedor de disparo automático válido.');
   };
 
-  /**
-   * Inicia o disparo 100% automático em lote para todos os participantes pendentes
-   */
   const handleStartAutomaticBatchDispatch = async (onlyPending = true) => {
     const queue = onlyPending
       ? accessTokens.filter((t) => t.whatsappStatus !== 'sent')
@@ -1565,12 +1609,9 @@ Boas festas! 🎅🎄`;
       const tokenDoc = queue[i];
       setDispatchProgress({ current: i + 1, total: queue.length });
 
-      const pin = decodePinFromTokenDoc(tokenDoc);
       const message = buildWhatsAppMessage(
         tokenDoc.participantName,
-        tokenDoc.token,
-        pin,
-        false
+        tokenDoc.token
       );
 
       setDispatchLogs((prev) => [
@@ -1632,7 +1673,6 @@ Boas festas! 🎅🎄`;
         ]);
       }
 
-      // Intervalo anti-bloqueio entre disparos
       if (i < queue.length - 1 && !abortDispatchRef.current) {
         await new Promise((r) => setTimeout(r, waDelaySeconds * 1000));
       }
@@ -1647,16 +1687,10 @@ Boas festas! 🎅🎄`;
     );
   };
 
-  /**
-   * Disparo individual (via API se configurada ou abertura direta do WhatsApp wa.me)
-   */
   const handleSendDirectWhatsApp = async (tokenDoc, forceWaMe = false) => {
-    const pin = decodePinFromTokenDoc(tokenDoc);
     const message = buildWhatsAppMessage(
       tokenDoc.participantName,
-      tokenDoc.token,
-      pin,
-      false
+      tokenDoc.token
     );
 
     if (!forceWaMe && waProvider !== 'wame_assist' && waApiToken.trim()) {
@@ -1693,7 +1727,6 @@ Boas festas! 🎅🎄`;
       return;
     }
 
-    // Abertura direta do WhatsApp / WhatsApp Web com mensagem preenchida
     const formattedPhone = formatPhoneForWhatsApp(tokenDoc.participantPhone);
     const encodedMsg = encodeURIComponent(message);
     window.open(
@@ -1755,123 +1788,6 @@ Boas festas! 🎅🎄`;
     }
   };
 
-  // ============================================================================
-  // 11. VALIDAÇÃO E REVELAÇÃO NA PÁGINA INDIVIDUAL DO PARTICIPANTE (AMBIENTE 2)
-  // ============================================================================
-
-  const handleValidateParticipantPin = async (e) => {
-    e.preventDefault();
-    setValidationError('');
-
-    if (!currentParticipantTokenDoc) {
-      setValidationError(
-        'Link de acesso não encontrado ou sorteio reiniciado.'
-      );
-      return;
-    }
-
-    // Verifica bloqueio temporário por excesso de tentativas incorretas
-    if (currentParticipantTokenDoc.lockedUntil) {
-      const lockDate = new Date(currentParticipantTokenDoc.lockedUntil);
-      if (lockDate > new Date()) {
-        const minutesLeft = Math.ceil((lockDate - new Date()) / 60000);
-        setValidationError(
-          `Muitas tentativas incorretas. Por segurança, aguarde ${minutesLeft} minuto(s) e tente novamente.`
-        );
-        return;
-      }
-    }
-
-    const cleanPin = sanitizePhone(pinInput);
-    if (cleanPin.length !== 6) {
-      setValidationError(
-        'Por favor, digite os 6 números do código que você recebeu no WhatsApp.'
-      );
-      return;
-    }
-
-    setIsVerifyingPin(true);
-    try {
-      const candidateHash = await sha256Hash(
-        cleanPin,
-        `token_pin::${currentParticipantTokenDoc.token}`
-      );
-
-      if (candidateHash !== currentParticipantTokenDoc.pinHash) {
-        const nextAttempts = (currentParticipantTokenDoc.attempts || 0) + 1;
-        const shouldLock = nextAttempts >= 5;
-        const lockedUntil = shouldLock
-          ? new Date(Date.now() + 15 * 60 * 1000).toISOString()
-          : null;
-
-        await updateDoc(
-          doc(
-            db,
-            'artifacts',
-            appId,
-            'public',
-            'data',
-            'access_tokens',
-            currentParticipantTokenDoc.id
-          ),
-          {
-            attempts: shouldLock ? 0 : nextAttempts,
-            lockedUntil,
-          }
-        );
-
-        setValidationError(
-          shouldLock
-            ? 'Código incorreto 5 vezes. Acesso pausado por 15 minutos por segurança.'
-            : `Código incorreto. Confira os 6 números enviados no seu WhatsApp (Tentativa ${nextAttempts} de 5).`
-        );
-        setIsVerifyingPin(false);
-        return;
-      }
-
-      // Código de 6 dígitos validado! Descriptografa o resultado exclusivo com AES-256-GCM
-      const secretData = await decryptSecretResult(
-        currentParticipantTokenDoc.token,
-        cleanPin,
-        currentParticipantTokenDoc.encryptedPayload,
-        currentParticipantTokenDoc.iv
-      );
-
-      await updateDoc(
-        doc(
-          db,
-          'artifacts',
-          appId,
-          'public',
-          'data',
-          'access_tokens',
-          currentParticipantTokenDoc.id
-        ),
-        {
-          attempts: 0,
-          lockedUntil: null,
-          hasAccessedResult: true,
-          lastAccessedAt: new Date().toISOString(),
-        }
-      );
-
-      setDecryptedResult(secretData);
-      setParticipantStep('animating');
-
-      setTimeout(() => {
-        setParticipantStep('revealed');
-      }, 2800);
-    } catch (err) {
-      console.error('Erro ao validar código:', err);
-      setValidationError(
-        'Não foi possível validar seu código. Confira os 6 dígitos e tente novamente.'
-      );
-    } finally {
-      setIsVerifyingPin(false);
-    }
-  };
-
-  // Carrega participantes de exemplo para teste rápido
   const handleLoadDemoParticipants = async () => {
     if (drawStatus === 'drawn') {
       showToast(
@@ -1888,45 +1804,21 @@ Boas festas! 🎅🎄`;
           id: 'demo_p1',
           fullName: 'Pedro Henrique',
           phone: '31999999999',
-          wantToGet: 'Perfume amadeirado, camisa polo ou fone Bluetooth',
-          dontWantToGet: 'Meias brancas',
-          shoeSize: '40',
-          shirtSize: 'M',
-          pantsSize: '40',
-          observations: 'Gosta de tecnologia e café especial',
         },
         {
           id: 'demo_p2',
           fullName: 'Maria Silva',
           phone: '31988888888',
-          wantToGet: 'Livros de romance, bolsa tiracolo ou kit de skincare',
-          dontWantToGet: 'Chocolates com castanhas',
-          shoeSize: '36',
-          shirtSize: 'P',
-          pantsSize: '38',
-          observations: 'Ama leitura e acessórios dourados',
         },
         {
           id: 'demo_p3',
           fullName: 'João Santos',
           phone: '31977777777',
-          wantToGet: 'Relógio esportivo, camiseta ou kit churrasco',
-          dontWantToGet: 'Canecas',
-          shoeSize: '42',
-          shirtSize: 'G',
-          pantsSize: '42',
-          observations: 'Prefere presentes práticos para o dia a dia',
         },
         {
           id: 'demo_p4',
           fullName: 'Vó Ana Clara',
           phone: '31966666666',
-          wantToGet: 'Sabonetes perfumados de lavanda, xale macio ou porta-retrato',
-          dontWantToGet: 'Perfumes muito fortes',
-          shoeSize: '35',
-          shirtSize: 'G',
-          pantsSize: '42',
-          observations: 'Gosta de cores claras e florais',
         },
       ];
 
@@ -1945,7 +1837,8 @@ Boas festas! 🎅🎄`;
             ...item,
             active: true,
             updatedAt: new Date().toISOString(),
-          }
+          },
+          { merge: true }
         );
       }
 
@@ -1978,24 +1871,45 @@ Boas festas! 🎅🎄`;
   }
 
   // ============================================================================
-  // 13. AMBIENTE 2: PÁGINA INDIVIDUAL DO PARTICIPANTE (ACESSÍVEL PARA IDOSOS)
+  // 13. AMBIENTE 2: PÁGINA DIRETA DO PARTICIPANTE (SEM SENHA + DICAS EM TEMPO REAL)
   // ============================================================================
 
   if (activeParticipantToken) {
+    const drawnName =
+      drawnPersonLatestData?.fullName || decryptedResult?.receiverName || '...';
+    const drawnHasHints = hasFilledGiftHints(drawnPersonLatestData);
+    const iHaveFilledMyHints = hasFilledGiftHints(myOwnParticipantDoc);
+
     return (
       <div className="min-h-screen bg-gradient-to-b from-red-950 via-red-900 to-emerald-950 text-white flex flex-col justify-between p-4 sm:p-8 font-sans">
-        {/* Barra superior de retorno caso o Administrador esteja apenas testando o link */}
+        {/* Toast Notification para quando o participante salva suas dicas */}
+        {toast && (
+          <div className="fixed top-5 right-5 z-50 max-w-md animate-bounce">
+            <div
+              className={`flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl border ${
+                toast.type === 'error'
+                  ? 'bg-red-900 text-white border-red-400'
+                  : 'bg-emerald-900 text-white border-amber-400'
+              }`}
+            >
+              <Sparkles className="w-5 h-5 text-amber-300 shrink-0" />
+              <p className="text-base font-bold">{toast.message}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Barra superior caso o Administrador esteja apenas testando a tela */}
         {isSimulatingParticipant && (
-          <div className="max-w-xl w-full mx-auto mb-4 bg-amber-400 text-red-950 px-4 py-3 rounded-2xl shadow-lg flex items-center justify-between font-bold text-xs sm:text-sm">
-            <span>👁️ Modo de Teste da Visão do Familiar</span>
+          <div className="max-w-2xl w-full mx-auto mb-4 bg-amber-400 text-red-950 px-4 py-3 rounded-2xl shadow-lg flex items-center justify-between font-bold text-xs sm:text-sm">
+            <span>
+              👁️ Simulação Admin (Nome sorteado oculto para não dar spoiler)
+            </span>
             <button
               type="button"
               onClick={() => {
                 setActiveParticipantToken(null);
                 setIsSimulatingParticipant(false);
                 setDecryptedResult(null);
-                setPinInput('');
-                setParticipantStep('validation');
               }}
               className="px-3 py-1.5 rounded-xl bg-red-950 text-amber-300 hover:bg-red-900 transition cursor-pointer"
             >
@@ -2004,9 +1918,9 @@ Boas festas! 🎅🎄`;
           </div>
         )}
 
-        <div className="max-w-xl w-full mx-auto my-auto">
-          {/* Cabeçalho Natalino Acolhedor */}
-          <div className="text-center mb-6">
+        <div className="max-w-2xl w-full mx-auto my-auto space-y-6">
+          {/* Cabeçalho Natalino */}
+          <div className="text-center">
             <div className="inline-flex items-center justify-center p-3.5 rounded-3xl bg-white/10 border-2 border-amber-400/50 shadow-xl mb-3">
               <ChristmasTreeSVG className="w-12 h-12" />
             </div>
@@ -2015,7 +1929,6 @@ Boas festas! 🎅🎄`;
             </h1>
           </div>
 
-          {/* Caso o link não exista ou tenha sido invalidado */}
           {!currentParticipantTokenDoc ? (
             <div className="bg-white text-stone-900 rounded-3xl p-6 sm:p-10 shadow-2xl border-4 border-amber-400 text-center space-y-5">
               <AlertTriangle className="w-16 h-16 text-red-700 mx-auto" />
@@ -2023,201 +1936,320 @@ Boas festas! 🎅🎄`;
                 Link de Acesso Não Encontrado
               </h2>
               <p className="text-base sm:text-lg text-stone-600 leading-relaxed">
-                Este link não está ativo ou um novo sorteio foi realizado.
-                Por favor, verifique a última mensagem enviada no seu WhatsApp!
+                Este link não está ativo ou um novo sorteio foi realizado. Por
+                favor, verifique a última mensagem enviada no seu WhatsApp!
               </p>
             </div>
-          ) : participantStep === 'validation' ? (
-            /* ETAPA 1: DIGITAR O CÓDIGO DE 6 DÍGITOS (LETRAS GRANDES E ALTO CONTRASTE) */
-            <div className="bg-white text-stone-900 rounded-3xl p-6 sm:p-10 shadow-2xl border-4 border-amber-400 space-y-6">
-              <div className="text-center space-y-2">
-                <span className="inline-block px-4 py-1.5 rounded-full bg-emerald-100 text-emerald-900 font-extrabold text-sm sm:text-base">
+          ) : isDecryptingLink ? (
+            <div className="bg-white/10 backdrop-blur-md rounded-3xl p-8 sm:p-12 border-4 border-amber-400 text-center space-y-6 shadow-2xl">
+              <FestiveGiftBoxSVG
+                isOpening={true}
+                className="w-36 h-36 mx-auto"
+              />
+              <h2 className="text-2xl sm:text-3xl font-black text-amber-300 animate-pulse">
+                ABRINDO SEU PRESENTE...
+              </h2>
+            </div>
+          ) : (
+            <div className="bg-white text-stone-900 rounded-3xl p-6 sm:p-10 shadow-2xl border-4 border-amber-400 space-y-8">
+              {/* BLOCO 1: SAUDAÇÃO E NOME DE QUEM A PESSOA TIROU */}
+              <div className="text-center space-y-3">
+                <span className="inline-block px-5 py-2 rounded-full bg-emerald-100 text-emerald-950 font-black text-base sm:text-lg">
                   👋 Olá, {currentParticipantTokenDoc.participantName}!
                 </span>
-                <h2 className="text-2xl sm:text-3xl font-black text-red-900 leading-snug pt-1">
-                  Seu amigo secreto está esperando por você!
-                </h2>
-                <p className="text-base sm:text-lg text-stone-600 font-medium">
-                  Digite abaixo o código de <strong>6 números</strong> que você
-                  recebeu pelo WhatsApp:
+
+                <div className="pt-2">
+                  <FestiveGiftBoxSVG
+                    isOpened={true}
+                    className="w-24 h-24 mx-auto"
+                  />
+                  <p className="text-base sm:text-xl font-black uppercase tracking-wider text-red-800 mt-2">
+                    🎉 VOCÊ TIROU NO AMIGO SECRETO: 🎉
+                  </p>
+                </div>
+
+                <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-red-900 via-red-800 to-emerald-900 text-white shadow-xl border-4 border-amber-400">
+                  <h2 className="text-3xl sm:text-5xl font-black text-amber-300 tracking-tight break-words">
+                    {isSimulatingParticipant
+                      ? '🔒 [Nome Oculto no Teste]'
+                      : drawnName}
+                  </h2>
+                </div>
+
+                <p className="text-sm sm:text-base text-stone-600 font-medium">
+                  🤫 Guarde segredo! Sempre que quiser consultar novamente, é só
+                  clicar no link do seu WhatsApp.
                 </p>
               </div>
 
-              <form onSubmit={handleValidateParticipantPin} className="space-y-6">
-                <div>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={6}
-                    required
-                    autoFocus
-                    value={pinInput}
-                    onChange={(e) => {
-                      setValidationError('');
-                      setPinInput(sanitizePhone(e.target.value).slice(0, 6));
-                    }}
-                    placeholder="000000"
-                    className="w-full py-5 px-4 text-center text-4xl sm:text-5xl font-black tracking-[0.35em] text-emerald-950 bg-stone-100 rounded-2xl border-4 border-stone-300 focus:border-emerald-700 focus:bg-white outline-none transition"
-                  />
-                </div>
-
-                {validationError && (
-                  <div className="p-4 rounded-2xl bg-red-100 border-2 border-red-400 text-red-950 text-base sm:text-lg font-bold text-center">
-                    ⚠️ {validationError}
-                  </div>
-                )}
+              {/* BLOCO 2: BOTÃO GIGANTE "DAR DICA DE PRESENTE" (PARA O PRÓPRIO PARTICIPANTE PREENCHER) */}
+              <div className="p-5 sm:p-6 rounded-3xl bg-amber-50 border-2 border-amber-400 space-y-3 text-center shadow-inner">
+                <span className="inline-block px-3 py-1 rounded-full bg-amber-200 text-amber-950 font-black text-xs sm:text-sm uppercase">
+                  {iHaveFilledMyHints
+                    ? '✅ Suas dicas já estão salvas!'
+                    : '📢 Ajude quem tirou você!'}
+                </span>
+                <h3 className="text-xl sm:text-2xl font-black text-stone-900">
+                  O que VOCÊ gostaria de ganhar,{' '}
+                  {
+                    String(
+                      currentParticipantTokenDoc.participantName || ''
+                    ).split(' ')[0]
+                  }
+                  ?
+                </h3>
+                <p className="text-sm sm:text-base text-stone-700">
+                  Clique no botão abaixo para escrever suas dicas de presente e
+                  tamanhos de roupa. A pessoa que tirou você verá na mesma hora!
+                </p>
 
                 <button
-                  type="submit"
-                  disabled={isVerifyingPin}
+                  type="button"
+                  onClick={handleOpenMyGiftHintsModal}
                   className="w-full py-5 px-6 rounded-2xl bg-gradient-to-r from-emerald-800 via-emerald-700 to-emerald-800 hover:from-emerald-700 hover:to-emerald-600 text-white font-black text-lg sm:text-xl shadow-xl border-2 border-amber-400 flex items-center justify-center gap-3 transition transform active:scale-95 cursor-pointer"
                 >
                   <Gift className="w-7 h-7 text-amber-300 shrink-0" />
                   <span>
-                    {isVerifyingPin
-                      ? 'ABRINDO SEU PRESENTE...'
-                      : 'DESCOBRIR MEU AMIGO SECRETO'}
+                    {iHaveFilledMyHints
+                      ? 'EDITAR MINHAS DICAS DE PRESENTE'
+                      : 'DAR DICA DE PRESENTE'}
                   </span>
                 </button>
-              </form>
-
-              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-center">
-                <p className="text-sm sm:text-base text-amber-950 font-medium">
-                  💡 <strong>Dica:</strong> O código de 6 números está na mesma
-                  mensagem do WhatsApp onde você clicou neste link.
-                </p>
-              </div>
-            </div>
-          ) : participantStep === 'animating' ? (
-            /* ETAPA 2: ANIMAÇÃO DE REVELAÇÃO */
-            <div className="bg-white/10 backdrop-blur-md rounded-3xl p-8 sm:p-12 border-4 border-amber-400 text-center space-y-6 shadow-2xl">
-              <FestiveGiftBoxSVG
-                isOpening={true}
-                className="w-44 h-44 mx-auto"
-              />
-              <h2 className="text-3xl sm:text-4xl font-black text-amber-300 animate-pulse">
-                PREPARE-SE PARA DESCOBRIR!
-              </h2>
-              <p className="text-lg sm:text-xl text-red-100 font-medium">
-                Desamarrando o laço dourado do seu presente...
-              </p>
-            </div>
-          ) : (
-            /* ETAPA 3: REVELAÇÃO DO AMIGO SECRETO E SUGESTÕES DE PRESENTES */
-            <div className="bg-white text-stone-900 rounded-3xl p-6 sm:p-10 shadow-2xl border-4 border-amber-400 space-y-6">
-              <div className="text-center space-y-3">
-                <FestiveGiftBoxSVG
-                  isOpened={true}
-                  className="w-28 h-28 mx-auto"
-                />
-                <p className="text-base sm:text-lg font-extrabold uppercase tracking-widest text-red-800">
-                  🎉 SEU AMIGO SECRETO É... 🎉
-                </p>
-
-                <div className="p-6 rounded-3xl bg-gradient-to-r from-red-900 via-red-800 to-emerald-900 text-white shadow-xl border-4 border-amber-400">
-                  <h2 className="text-3xl sm:text-5xl font-black text-amber-300 tracking-tight break-words">
-                    {drawnPersonLatestData?.fullName ||
-                      decryptedResult?.receiverName}
-                  </h2>
-                </div>
-
-                <p className="text-sm sm:text-base text-stone-600 pt-1">
-                  🤫 Guarde segredo! Você pode abrir este link novamente sempre
-                  que quiser lembrar.
-                </p>
               </div>
 
-              {/* Botão grande para abrir/fechar sugestões de presentes */}
-              <button
-                type="button"
-                onClick={() => setShowGiftSuggestions(!showGiftSuggestions)}
-                className="w-full py-5 px-6 rounded-2xl bg-amber-400 hover:bg-amber-300 text-red-950 font-black text-lg sm:text-xl shadow-lg border-2 border-amber-600 flex items-center justify-center gap-3 transition cursor-pointer"
-              >
-                <Heart className="w-7 h-7 text-red-800 fill-red-800 shrink-0" />
-                <span>
-                  {showGiftSuggestions
-                    ? 'OCULTAR SUGESTÕES DE PRESENTES'
-                    : 'VER SUGESTÕES DE PRESENTES'}
-                </span>
-              </button>
-
-              {showGiftSuggestions && (
-                <div className="space-y-4 pt-2 animate-fade-in">
-                  <h3 className="text-xl font-black text-stone-900 text-center border-b-2 border-stone-200 pb-3">
-                    🎁 Dicas e Tamanhos de{' '}
-                    {drawnPersonLatestData?.fullName ||
-                      decryptedResult?.receiverName}
-                  </h3>
-
-                  <div className="p-5 rounded-2xl bg-emerald-50 border-2 border-emerald-300 space-y-1.5">
-                    <span className="text-sm sm:text-base font-black uppercase text-emerald-950 flex items-center gap-2">
-                      <Heart className="w-5 h-5 text-emerald-700 shrink-0" />O
-                      que gostaria de ganhar:
+              {/* BLOCO 3: DICAS E TAMANHOS DA PESSOA QUE ELE TIROU (ATUALIZADO EM TEMPO REAL!) */}
+              {!isSimulatingParticipant && (
+                <div className="space-y-4 pt-2 border-t-2 border-stone-200">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <h3 className="text-xl sm:text-2xl font-black text-stone-900 flex items-center gap-2">
+                      <Heart className="w-6 h-6 text-red-700 fill-red-700 shrink-0" />
+                      <span>Dicas de Presente de {drawnName}:</span>
+                    </h3>
+                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-100 px-3 py-1 rounded-full">
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      Atualiza sozinho em tempo real
                     </span>
-                    <p className="text-lg sm:text-xl font-bold text-stone-900 leading-relaxed">
-                      {drawnPersonLatestData?.wantToGet ||
-                        'Não informou preferência específica (escolha com carinho!)'}
-                    </p>
                   </div>
 
-                  <div className="p-5 rounded-2xl bg-red-50 border-2 border-red-200 space-y-1.5">
-                    <span className="text-sm sm:text-base font-black uppercase text-red-950 flex items-center gap-2">
-                      <ThumbsDown className="w-5 h-5 text-red-700 shrink-0" />O
-                      que NÃO gostaria de ganhar:
-                    </span>
-                    <p className="text-lg sm:text-xl font-bold text-stone-900 leading-relaxed">
-                      {drawnPersonLatestData?.dontWantToGet ||
-                        'Nenhuma restrição informada'}
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="p-4 rounded-2xl bg-stone-100 border-2 border-stone-300 text-center">
-                      <span className="text-sm font-bold text-stone-600 block">
-                        👕 Camisa / Blusa
-                      </span>
-                      <strong className="text-2xl font-black text-stone-900 block mt-1">
-                        {drawnPersonLatestData?.shirtSize || 'Não informado'}
-                      </strong>
+                  {!drawnHasHints ? (
+                    <div className="p-6 rounded-3xl bg-stone-100 border-2 border-dashed border-stone-300 text-center space-y-2">
+                      <Clock className="w-10 h-10 text-amber-600 mx-auto" />
+                      <h4 className="text-lg sm:text-xl font-black text-stone-800">
+                        {drawnName} ainda não preencheu as dicas de presente!
+                      </h4>
+                      <p className="text-sm sm:text-base text-stone-600 leading-relaxed">
+                        Não se preocupe: assim que {drawnName} clicar em{' '}
+                        <strong>"Dar Dica de Presente"</strong> lá no celular
+                        dele(a), as informações aparecerão aqui para você
+                        automaticamente!
+                      </p>
                     </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="p-5 rounded-2xl bg-emerald-50 border-2 border-emerald-300 space-y-1.5">
+                        <span className="text-sm sm:text-base font-black uppercase text-emerald-950 flex items-center gap-2">
+                          <Heart className="w-5 h-5 text-emerald-700 shrink-0" />
+                          O que {drawnName} gostaria de ganhar:
+                        </span>
+                        <p className="text-lg sm:text-2xl font-black text-stone-900 leading-relaxed">
+                          {drawnPersonLatestData?.wantToGet ||
+                            'Não informou preferência específica'}
+                        </p>
+                      </div>
 
-                    <div className="p-4 rounded-2xl bg-stone-100 border-2 border-stone-300 text-center">
-                      <span className="text-sm font-bold text-stone-600 block">
-                        👖 Tamanho da Calça
-                      </span>
-                      <strong className="text-2xl font-black text-stone-900 block mt-1">
-                        {drawnPersonLatestData?.pantsSize || 'Não informado'}
-                      </strong>
+                      {drawnPersonLatestData?.dontWantToGet && (
+                        <div className="p-5 rounded-2xl bg-red-50 border-2 border-red-200 space-y-1.5">
+                          <span className="text-sm sm:text-base font-black uppercase text-red-950 flex items-center gap-2">
+                            <ThumbsDown className="w-5 h-5 text-red-700 shrink-0" />
+                            O que NÃO gostaria de ganhar:
+                          </span>
+                          <p className="text-lg sm:text-xl font-bold text-stone-900 leading-relaxed">
+                            {drawnPersonLatestData.dontWantToGet}
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="p-4 rounded-2xl bg-stone-100 border-2 border-stone-300 text-center">
+                          <span className="text-sm font-bold text-stone-600 block">
+                            👕 Camisa / Blusa
+                          </span>
+                          <strong className="text-2xl font-black text-stone-900 block mt-1">
+                            {drawnPersonLatestData?.shirtSize || '-'}
+                          </strong>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-stone-100 border-2 border-stone-300 text-center">
+                          <span className="text-sm font-bold text-stone-600 block">
+                            👖 Calça
+                          </span>
+                          <strong className="text-2xl font-black text-stone-900 block mt-1">
+                            {drawnPersonLatestData?.pantsSize || '-'}
+                          </strong>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-stone-100 border-2 border-stone-300 text-center">
+                          <span className="text-sm font-bold text-stone-600 block">
+                            👟 Calçado
+                          </span>
+                          <strong className="text-2xl font-black text-stone-900 block mt-1">
+                            {drawnPersonLatestData?.shoeSize || '-'}
+                          </strong>
+                        </div>
+                      </div>
+
+                      {drawnPersonLatestData?.observations && (
+                        <div className="p-5 rounded-2xl bg-amber-50 border-2 border-amber-200 space-y-1">
+                          <span className="text-sm sm:text-base font-black uppercase text-amber-950 block">
+                            ✨ Observações / Outras Preferências:
+                          </span>
+                          <p className="text-base sm:text-lg font-bold text-stone-800">
+                            {drawnPersonLatestData.observations}
+                          </p>
+                        </div>
+                      )}
                     </div>
-
-                    <div className="p-4 rounded-2xl bg-stone-100 border-2 border-stone-300 text-center">
-                      <span className="text-sm font-bold text-stone-600 block">
-                        👟 Calçado
-                      </span>
-                      <strong className="text-2xl font-black text-stone-900 block mt-1">
-                        {drawnPersonLatestData?.shoeSize || 'Não informado'}
-                      </strong>
-                    </div>
-                  </div>
-
-                  <div className="p-5 rounded-2xl bg-amber-50 border-2 border-amber-200 space-y-1">
-                    <span className="text-sm sm:text-base font-black uppercase text-amber-950 block">
-                      ✨ Observações Adicionais:
-                    </span>
-                    <p className="text-base sm:text-lg font-semibold text-stone-800">
-                      {drawnPersonLatestData?.observations ||
-                        'Nenhuma observação adicional.'}
-                    </p>
-                  </div>
+                  )}
                 </div>
               )}
             </div>
           )}
         </div>
 
+        {/* MODAL PARA O PARTICIPANTE PREENCHER/ATUALIZAR SUAS PRÓPRIAS DICAS DE PRESENTE */}
+        {myHintsModalOpen && (
+          <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-white text-stone-900 rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border-4 border-amber-400 space-y-5 my-8">
+              <div className="flex items-center justify-between pb-3 border-b-2 border-stone-200">
+                <div>
+                  <span className="text-xs font-black uppercase text-emerald-800">
+                    Suas Preferências de Presente
+                  </span>
+                  <h3 className="text-2xl font-black text-stone-900">
+                    🎁 Dar Dica de Presente
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMyHintsModalOpen(false)}
+                  className="w-10 h-10 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-700 font-black text-lg cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <p className="text-sm sm:text-base text-stone-600 font-medium">
+                Preencha abaixo o que você gostaria de ganhar. A pessoa que
+                tirou você verá essas dicas imediatamente (sem descobrir quem
+                você tirou)!
+              </p>
+
+              <form onSubmit={handleSaveMyGiftHints} className="space-y-4">
+                <div>
+                  <label className="block text-sm sm:text-base font-black text-emerald-950 mb-1.5">
+                    🎁 O que você GOSTARIA de ganhar?
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={myWant}
+                    onChange={(e) => setMyWant(e.target.value)}
+                    placeholder="Ex: Perfume, camisa, bolsa, livro, chocolate, utensílio..."
+                    className="w-full px-4 py-3 rounded-2xl border-2 border-stone-300 focus:border-emerald-700 text-base sm:text-lg font-semibold outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm sm:text-base font-black text-red-900 mb-1.5">
+                    🚫 Tem algo que você NÃO gostaria de ganhar? (Opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={myDontWant}
+                    onChange={(e) => setMyDontWant(e.target.value)}
+                    placeholder="Ex: Roupas escuras, perfumes fortes..."
+                    className="w-full px-4 py-3 rounded-2xl border-2 border-stone-300 focus:border-red-700 text-base sm:text-lg font-semibold outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-sm font-black text-stone-700 mb-1">
+                      👕 Camisa / Blusa
+                    </label>
+                    <input
+                      type="text"
+                      value={myShirt}
+                      onChange={(e) => setMyShirt(e.target.value)}
+                      placeholder="Ex: P, M, G, GG"
+                      className="w-full px-4 py-3 rounded-2xl border-2 border-stone-300 text-base font-bold outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-black text-stone-700 mb-1">
+                      👖 Tamanho Calça
+                    </label>
+                    <input
+                      type="text"
+                      value={myPants}
+                      onChange={(e) => setMyPants(e.target.value)}
+                      placeholder="Ex: 38, 42, M"
+                      className="w-full px-4 py-3 rounded-2xl border-2 border-stone-300 text-base font-bold outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-black text-stone-700 mb-1">
+                      👟 Calçado
+                    </label>
+                    <input
+                      type="text"
+                      value={myShoe}
+                      onChange={(e) => setMyShoe(e.target.value)}
+                      placeholder="Ex: 36, 40"
+                      className="w-full px-4 py-3 rounded-2xl border-2 border-stone-300 text-base font-bold outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm sm:text-base font-black text-stone-700 mb-1">
+                    ✨ Outras observações ou cores favoritas (Opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={myNotes}
+                    onChange={(e) => setMyNotes(e.target.value)}
+                    placeholder="Ex: Gosto de cores claras, prata/dourado..."
+                    className="w-full px-4 py-3 rounded-2xl border-2 border-stone-300 text-base font-semibold outline-none"
+                  />
+                </div>
+
+                <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t-2 border-stone-200">
+                  <button
+                    type="button"
+                    onClick={() => setMyHintsModalOpen(false)}
+                    className="py-3.5 px-6 rounded-2xl border-2 border-stone-300 font-black text-base text-stone-700 cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingMyHints}
+                    className="py-4 px-8 rounded-2xl bg-emerald-800 hover:bg-emerald-700 text-white font-black text-lg shadow-xl border-2 border-amber-400 cursor-pointer"
+                  >
+                    {savingMyHints
+                      ? 'SALVANDO...'
+                      : '✅ SALVAR MINHAS DICAS'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
         <footer className="text-center text-xs sm:text-sm text-red-200/80 pt-8">
-          🎄 {eventName} • Acesso Individual Protegido por Código
+          🎄 {eventName} • Link Exclusivo da Família
         </footer>
       </div>
     );
@@ -2342,15 +2374,16 @@ Boas festas! 🎅🎄`;
               </button>
 
               <div className="p-3.5 rounded-xl bg-stone-50 border border-stone-200 text-xs text-stone-500 text-center">
-                🔒 Os familiares não precisam fazer login aqui. Eles acessam
-                diretamente pelo link individual enviado no WhatsApp.
+                🔒 Os familiares não precisam fazer login nem digitar senhas:
+                eles clicam no link enviado no WhatsApp e já veem seu Amigo
+                Secreto!
               </div>
             </form>
           </div>
         </div>
 
         <footer className="text-center text-xs text-red-200/70">
-          Sistema Centralizado de Amigo Secreto • Criptografia Zero-Knowledge
+          Sistema Centralizado de Amigo Secreto • Acesso Direto Sem Senha
         </footer>
       </div>
     );
@@ -2364,12 +2397,14 @@ Boas festas! 🎅🎄`;
     (t) => t.whatsappStatus === 'sent'
   ).length;
   const accessedCount = accessTokens.filter((t) => t.hasAccessedResult).length;
+  const hintsFilledCount = participants.filter((p) =>
+    hasFilledGiftHints(p)
+  ).length;
 
   return (
     <div className="min-h-screen bg-stone-50 text-stone-800 flex flex-col font-sans">
       <div className="h-2 bg-gradient-to-r from-red-800 via-amber-400 to-emerald-800" />
 
-      {/* Toast Notification */}
       {toast && (
         <div className="fixed top-5 right-5 z-50 max-w-md animate-bounce">
           <div
@@ -2406,7 +2441,8 @@ Boas festas! 🎅🎄`;
                 </span>
               </div>
               <p className="text-xs text-red-200">
-                Gerenciamento Centralizado • Sigilo Absoluto dos Pares (Zero-Knowledge)
+                Link Direto Sem Código • Dicas de Presentes Preenchidas pelos
+                Próprios Familiares
               </p>
             </div>
           </div>
@@ -2463,11 +2499,8 @@ Boas festas! 🎅🎄`;
       </header>
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8 space-y-8">
-        {/* ====================================================================
-            CARDS DE RESUMO E BOTÃO PRINCIPAL "REALIZAR SORTEIO"
-           ==================================================================== */}
+        {/* CARDS DE RESUMO E BOTÃO PRINCIPAL "REALIZAR SORTEIO" */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-stretch">
-          {/* Métricas do Evento */}
           <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="bg-white p-5 rounded-3xl border border-stone-200 shadow-sm flex flex-col justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-stone-400">
@@ -2477,7 +2510,7 @@ Boas festas! 🎅🎄`;
                 {participants.length}
               </div>
               <span className="text-xs text-stone-500">
-                Familiares cadastrados na lista
+                {hintsFilledCount} já preencheram dicas de presente
               </span>
             </div>
 
@@ -2513,17 +2546,16 @@ Boas festas! 🎅🎄`;
                 {sentCount} / {accessTokens.length || participants.length}
               </div>
               <span className="text-xs text-stone-500">
-                Links e códigos de 6 dígitos enviados
+                Links diretos enviados sem código
               </span>
             </div>
           </div>
 
-          {/* Card de Ação Principal: REALIZAR SORTEIO */}
           <div className="md:col-span-4 bg-gradient-to-br from-red-900 via-red-800 to-emerald-950 rounded-3xl p-6 text-white shadow-xl border border-amber-400/40 flex flex-col justify-between space-y-4">
             <div>
               <span className="text-[11px] font-bold uppercase tracking-widest text-amber-300 flex items-center gap-1.5">
                 <Shield className="w-3.5 h-3.5" />
-                Sorteio Criptografado
+                Acesso Direto pelo Link
               </span>
               <h3 className="text-lg font-extrabold mt-1">
                 {drawStatus === 'drawn'
@@ -2532,8 +2564,8 @@ Boas festas! 🎅🎄`;
               </h3>
               <p className="text-xs text-red-100 mt-1 leading-relaxed">
                 {drawStatus === 'drawn'
-                  ? 'Os pares estão protegidos por criptografia. Nenhum resultado é exibido neste painel.'
-                  : 'Gera automaticamente um link único e um código de 6 dígitos para cada familiar.'}
+                  ? 'Cada familiar clica no seu link do WhatsApp, já vê quem tirou e cadastra suas próprias dicas.'
+                  : 'Gera um link exclusivo para cada familiar ver quem tirou sem precisar digitar código.'}
               </p>
             </div>
 
@@ -2555,7 +2587,7 @@ Boas festas! 🎅🎄`;
                   className="w-full py-3.5 px-4 rounded-2xl bg-amber-400 hover:bg-amber-300 text-red-950 font-black text-xs sm:text-sm shadow-lg flex items-center justify-center gap-2 transition cursor-pointer"
                 >
                   <Send className="w-4 h-4" />
-                  ENVIAR RESULTADOS PELO WHATSAPP
+                  ENVIAR LINKS PELO WHATSAPP
                 </button>
                 <button
                   type="button"
@@ -2569,9 +2601,7 @@ Boas festas! 🎅🎄`;
           </div>
         </div>
 
-        {/* ====================================================================
-            ABA 1: LISTA DE PARTICIPANTES, CADASTRO MANUAL E IMPORTAÇÃO CSV
-           ==================================================================== */}
+        {/* ABA 1: LISTA DE PARTICIPANTES (CADASTRO SÓ COM NOME E WHATSAPP) */}
         {adminTab === 'dashboard' && (
           <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-md border border-stone-200 space-y-6">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-6 border-b border-stone-200">
@@ -2581,8 +2611,8 @@ Boas festas! 🎅🎄`;
                   Participantes da Família ({participants.length})
                 </h2>
                 <p className="text-xs sm:text-sm text-stone-500 mt-1">
-                  Cadastre manualmente cada familiar ou importe uma planilha CSV
-                  com os números de WhatsApp e tamanhos de roupas.
+                  Cadastre apenas o <strong>Nome e o WhatsApp</strong>. Cada
+                  familiar preencherá suas próprias dicas de presente pelo link!
                 </p>
               </div>
 
@@ -2605,7 +2635,7 @@ Boas festas! 🎅🎄`;
                   className="px-4 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 text-emerald-900 border border-emerald-300 font-bold text-xs sm:text-sm flex items-center gap-2 transition cursor-pointer"
                 >
                   <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
-                  Importar participantes (CSV)
+                  Importar CSV (Nome e Telefone)
                 </button>
 
                 <button
@@ -2620,7 +2650,6 @@ Boas festas! 🎅🎄`;
               </div>
             </div>
 
-            {/* Barra de Pesquisa por Nome ou Telefone */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="relative w-full sm:w-96">
                 <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -2632,28 +2661,17 @@ Boas festas! 🎅🎄`;
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-300 text-sm outline-none focus:border-red-800"
                 />
               </div>
-
-              {drawStatus === 'drawn' && (
-                <div className="text-xs text-amber-900 bg-amber-50 border border-amber-200 px-3.5 py-2 rounded-xl flex items-center gap-2">
-                  <Lock className="w-4 h-4 text-amber-700 shrink-0" />
-                  <span>
-                    Você ainda pode editar telefones ou tamanhos de roupas mesmo
-                    após o sorteio.
-                  </span>
-                </div>
-              )}
             </div>
 
-            {/* Tabela de Participantes */}
             {filteredParticipants.length === 0 ? (
               <div className="p-12 rounded-2xl bg-stone-50 border border-dashed border-stone-300 text-center space-y-3">
                 <Users className="w-12 h-12 text-stone-400 mx-auto" />
                 <h3 className="text-base font-bold text-stone-700">
-                  Nenhum participante encontrado
+                  Nenhum participante cadastrado
                 </h3>
                 <p className="text-xs text-stone-500 max-w-md mx-auto">
-                  Clique em "Cadastrar Participante" ou "Importar participantes
-                  (CSV)" no topo para adicionar os membros da família.
+                  Clique em "Cadastrar Participante" e informe apenas o Nome e o
+                  WhatsApp de cada familiar.
                 </p>
               </div>
             ) : (
@@ -2663,55 +2681,61 @@ Boas festas! 🎅🎄`;
                     <tr className="bg-stone-100 border-b border-stone-200 text-[11px] font-extrabold uppercase tracking-wider text-stone-500">
                       <th className="py-3.5 px-4">Nome Completo</th>
                       <th className="py-3.5 px-4">WhatsApp (DDD)</th>
-                      <th className="py-3.5 px-4">Gostaria de Ganhar</th>
-                      <th className="py-3.5 px-4">Calçado / Camisa / Calça</th>
+                      <th className="py-3.5 px-4">
+                        Status das Dicas (Preenchidas pelo Familiar)
+                      </th>
                       <th className="py-3.5 px-4 text-right">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-stone-100 text-sm">
-                    {filteredParticipants.map((p) => (
-                      <tr key={p.id} className="hover:bg-stone-50/80">
-                        <td className="py-3.5 px-4 font-bold text-stone-900">
-                          {p.fullName}
-                        </td>
-                        <td className="py-3.5 px-4 font-mono text-xs text-emerald-800 font-semibold">
-                          {formatPhoneDisplay(p.phone)}
-                        </td>
-                        <td className="py-3.5 px-4 text-xs text-stone-600 max-w-xs truncate">
-                          {p.wantToGet || (
-                            <span className="text-stone-400 italic">
-                              Não informado
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3.5 px-4 text-xs text-stone-600">
-                          👟 {p.shoeSize || '-'} | 👕 {p.shirtSize || '-'} | 👖{' '}
-                          {p.pantsSize || '-'}
-                        </td>
-                        <td className="py-3.5 px-4 text-right">
-                          <div className="inline-flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => openEditParticipantModal(p)}
-                              className="px-3 py-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold flex items-center gap-1 cursor-pointer"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                              Editar
-                            </button>
-                            {drawStatus !== 'drawn' && (
+                    {filteredParticipants.map((p) => {
+                      const filled = hasFilledGiftHints(p);
+                      return (
+                        <tr key={p.id} className="hover:bg-stone-50/80">
+                          <td className="py-3.5 px-4 font-bold text-stone-900">
+                            {p.fullName}
+                          </td>
+                          <td className="py-3.5 px-4 font-mono text-xs text-emerald-800 font-semibold">
+                            {formatPhoneDisplay(p.phone)}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            {filled ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-900 text-xs font-bold">
+                                <CheckCircle className="w-3.5 h-3.5 text-emerald-700" />
+                                Já preencheu dicas no link
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-stone-100 text-stone-500 text-xs font-medium">
+                                <Clock className="w-3.5 h-3.5" />
+                                Preenche ao abrir o link
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4 text-right">
+                            <div className="inline-flex items-center gap-1.5">
                               <button
                                 type="button"
-                                onClick={() => handleDeleteParticipant(p)}
-                                className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 cursor-pointer"
-                                title="Excluir participante"
+                                onClick={() => openEditParticipantModal(p)}
+                                className="px-3 py-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold flex items-center gap-1 cursor-pointer"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Edit3 className="w-3.5 h-3.5" />
+                                Editar Nome/Tel
                               </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                              {drawStatus !== 'drawn' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteParticipant(p)}
+                                  className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 cursor-pointer"
+                                  title="Excluir participante"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -2719,9 +2743,7 @@ Boas festas! 🎅🎄`;
           </div>
         )}
 
-        {/* ====================================================================
-            ABA 2: ENVIAR RESULTADOS PELO WHATSAPP (100% AUTOMÁTICO + INDIVIDUAL)
-           ==================================================================== */}
+        {/* ABA 2: ENVIAR RESULTADOS PELO WHATSAPP */}
         {adminTab === 'whatsapp_dispatch' && (
           <div className="space-y-6">
             {drawStatus !== 'drawn' ? (
@@ -2732,13 +2754,12 @@ Boas festas! 🎅🎄`;
                 </h3>
                 <p className="text-sm text-stone-600 max-w-md mx-auto">
                   Assim que você clicar em "REALIZAR SORTEIO", o sistema gerará
-                  os links e códigos individuais de 6 dígitos para disparar no
-                  WhatsApp de toda a família.
+                  os links exclusivos diretos para disparar no WhatsApp de toda
+                  a família.
                 </p>
               </div>
             ) : (
               <>
-                {/* Painel de Controle de Disparo 100% Automático via API */}
                 <div className="bg-gradient-to-r from-emerald-950 via-emerald-900 to-stone-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl border border-amber-400/30 space-y-6">
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                     <div>
@@ -2747,11 +2768,11 @@ Boas festas! 🎅🎄`;
                         Disparo Automático em Lote + Individual
                       </span>
                       <h2 className="text-2xl font-extrabold">
-                        ENVIAR RESULTADOS PELO WHATSAPP
+                        ENVIAR LINKS DIRETOS PELO WHATSAPP
                       </h2>
                       <p className="text-xs sm:text-sm text-emerald-100 mt-1">
-                        Envie automaticamente para todos os familiares via API de
-                        WhatsApp ou clique no botão individual de cada pessoa.
+                        Cada familiar recebe apenas o próprio link: clicou, já
+                        vê quem tirou e preenche suas dicas de presente!
                       </p>
                     </div>
 
@@ -2792,14 +2813,14 @@ Boas festas! 🎅🎄`;
                           onChange={(e) => setWaProvider(e.target.value)}
                           className="w-full px-3 py-2.5 rounded-xl bg-stone-900 text-white border border-white/20 text-xs font-semibold outline-none"
                         >
+                          <option value="ultramsg">
+                            ⚡ UltraMsg API (Disparo 100% Automático)
+                          </option>
                           <option value="zapi">
                             ⚡ Z-API (Disparo 100% Automático)
                           </option>
                           <option value="evolution">
                             ⚡ Evolution API (Disparo 100% Automático)
-                          </option>
-                          <option value="ultramsg">
-                            ⚡ UltraMsg API (Disparo 100% Automático)
                           </option>
                           <option value="webhook">
                             🔗 Webhook Próprio / n8n / Make
@@ -2835,7 +2856,7 @@ Boas festas! 🎅🎄`;
                             type="text"
                             value={waInstanceId}
                             onChange={(e) => setWaInstanceId(e.target.value)}
-                            placeholder="Ex: 3B9F8A..."
+                            placeholder="Ex: instance115432"
                             className="w-full px-3 py-2 rounded-xl bg-stone-900 text-white border border-white/20 text-xs outline-none"
                           />
                         </div>
@@ -2876,9 +2897,9 @@ Boas festas! 🎅🎄`;
 
                     <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                       <span className="text-[11px] text-emerald-200">
-                        🔒 <strong>Privacidade Garantida:</strong> O sistema
-                        insere o código de 6 dígitos automaticamente na mensagem
-                        de cada familiar sem revelar quem tirou quem.
+                        🔒 <strong>Zero Senhas:</strong> O familiar só clica no
+                        link recebido no WhatsApp, vê quem tirou e já pode
+                        preencher suas dicas de presente!
                       </span>
                       <button
                         type="button"
@@ -2890,7 +2911,6 @@ Boas festas! 🎅🎄`;
                     </div>
                   </div>
 
-                  {/* Barra de progresso e console ao vivo durante o disparo automático */}
                   {(isAutoDispatching || dispatchLogs.length > 0) && (
                     <div className="bg-black/40 p-4 rounded-2xl border border-white/10 space-y-3">
                       <div className="flex items-center justify-between text-xs font-bold">
@@ -2932,16 +2952,16 @@ Boas festas! 🎅🎄`;
                   )}
                 </div>
 
-                {/* Lista de Participantes com Status de Envio e Botões Individuais */}
+                {/* Lista de Participantes com Status de Envio */}
                 <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-md border border-stone-200 space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-stone-200">
                     <div>
                       <h3 className="text-lg font-extrabold text-stone-900">
-                        Lista de Links Individuais e Status de Envio
+                        Lista de Links Diretos e Status de Envio
                       </h3>
                       <p className="text-xs text-stone-500">
-                        Você pode revisar a mensagem, enviar automaticamente via
-                        API ou abrir a conversa já preenchida no WhatsApp.
+                        Acompanhe quem já recebeu no WhatsApp, quem já abriu o
+                        link e quem já preencheu as dicas de presente.
                       </p>
                     </div>
                   </div>
@@ -2952,92 +2972,106 @@ Boas festas! 🎅🎄`;
                         <tr className="bg-stone-100 border-b border-stone-200 text-[11px] font-extrabold uppercase tracking-wider text-stone-500">
                           <th className="py-3.5 px-4">Participante</th>
                           <th className="py-3.5 px-4">Telefone (WhatsApp)</th>
-                          <th className="py-3.5 px-4">Link Exclusivo Gerado</th>
                           <th className="py-3.5 px-4">Status do Envio</th>
-                          <th className="py-3.5 px-4">Acesso do Familiar</th>
+                          <th className="py-3.5 px-4">Abriu o Link?</th>
+                          <th className="py-3.5 px-4">Dicas de Presente</th>
                           <th className="py-3.5 px-4 text-right">
                             Ações de Envio
                           </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-stone-100 text-sm">
-                        {accessTokens.map((tk) => (
-                          <tr key={tk.id} className="hover:bg-stone-50">
-                            <td className="py-3.5 px-4 font-bold text-stone-900">
-                              {tk.participantName}
-                            </td>
-                            <td className="py-3.5 px-4 font-mono text-xs text-stone-600">
-                              {formatPhoneDisplay(tk.participantPhone)}
-                            </td>
-                            <td className="py-3.5 px-4 font-mono text-xs text-emerald-800">
-                              /amigo-secreto/{tk.token}
-                            </td>
-                            <td className="py-3.5 px-4">
-                              {tk.whatsappStatus === 'sent' ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">
-                                  <CheckCircle className="w-3.5 h-3.5" />
-                                  Enviado
-                                </span>
-                              ) : tk.whatsappStatus === 'error' ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-red-100 text-red-800 text-xs font-bold">
-                                  <XCircle className="w-3.5 h-3.5" />
-                                  Erro API
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold">
-                                  <Clock className="w-3.5 h-3.5" />
-                                  Pendente
-                                </span>
-                              )}
-                            </td>
-                            <td className="py-3.5 px-4 text-xs">
-                              {tk.hasAccessedResult ? (
-                                <span className="text-emerald-700 font-bold">
-                                  ✅ Já abriu o resultado
-                                </span>
-                              ) : (
-                                <span className="text-stone-400">
-                                  Ainda não abriu
-                                </span>
-                              )}
-                            </td>
-                            <td className="py-3.5 px-4 text-right">
-                              <div className="inline-flex items-center gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => setPreviewMessageModal(tk)}
-                                  className="px-2.5 py-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold cursor-pointer"
-                                  title="Revisar mensagem antes de enviar"
-                                >
-                                  Revisar
-                                </button>
+                        {accessTokens.map((tk) => {
+                          const partDoc = participants.find(
+                            (p) => p.id === tk.participantId
+                          );
+                          const hasHints = hasFilledGiftHints(partDoc);
+                          return (
+                            <tr key={tk.id} className="hover:bg-stone-50">
+                              <td className="py-3.5 px-4 font-bold text-stone-900">
+                                {tk.participantName}
+                              </td>
+                              <td className="py-3.5 px-4 font-mono text-xs text-stone-600">
+                                {formatPhoneDisplay(tk.participantPhone)}
+                              </td>
+                              <td className="py-3.5 px-4">
+                                {tk.whatsappStatus === 'sent' ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">
+                                    <CheckCircle className="w-3.5 h-3.5" />
+                                    Enviado
+                                  </span>
+                                ) : tk.whatsappStatus === 'error' ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-red-100 text-red-800 text-xs font-bold">
+                                    <XCircle className="w-3.5 h-3.5" />
+                                    Erro API
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold">
+                                    <Clock className="w-3.5 h-3.5" />
+                                    Pendente
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3.5 px-4 text-xs">
+                                {tk.hasAccessedResult ? (
+                                  <span className="text-emerald-700 font-bold">
+                                    ✅ Já viu quem tirou
+                                  </span>
+                                ) : (
+                                  <span className="text-stone-400">
+                                    Ainda não abriu
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3.5 px-4 text-xs">
+                                {hasHints ? (
+                                  <span className="text-emerald-800 font-bold">
+                                    🎁 Dicas preenchidas
+                                  </span>
+                                ) : (
+                                  <span className="text-stone-400">
+                                    Sem dicas ainda
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3.5 px-4 text-right">
+                                <div className="inline-flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => setPreviewMessageModal(tk)}
+                                    className="px-2.5 py-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold cursor-pointer"
+                                    title="Revisar mensagem antes de enviar"
+                                  >
+                                    Ver Msg
+                                  </button>
 
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setIsSimulatingParticipant(true);
-                                    setActiveParticipantToken(tk.token);
-                                  }}
-                                  className="px-2.5 py-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold cursor-pointer"
-                                  title="Simular tela deste participante"
-                                >
-                                  Testar Tela
-                                </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setIsSimulatingParticipant(true);
+                                      setActiveParticipantToken(tk.token);
+                                    }}
+                                    className="px-2.5 py-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold cursor-pointer"
+                                    title="Simular tela deste participante (sem spoiler)"
+                                  >
+                                    Simular
+                                  </button>
 
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleSendDirectWhatsApp(tk, true)
-                                  }
-                                  className="px-3.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
-                                >
-                                  <Send className="w-3.5 h-3.5" />
-                                  Enviar WhatsApp
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleSendDirectWhatsApp(tk, true)
+                                    }
+                                    className="px-3.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                                  >
+                                    <Send className="w-3.5 h-3.5" />
+                                    WhatsApp
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -3047,9 +3081,7 @@ Boas festas! 🎅🎄`;
           </div>
         )}
 
-        {/* ====================================================================
-            ABA 3: CONFIGURAÇÕES DO EVENTO E DICAS DE ROTEAMENTO VERCEL
-           ==================================================================== */}
+        {/* ABA 3: CONFIGURAÇÕES DO EVENTO */}
         {adminTab === 'settings' && (
           <div className="max-w-3xl mx-auto space-y-6">
             <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-md border border-stone-200 space-y-6">
@@ -3116,21 +3148,6 @@ Boas festas! 🎅🎄`;
                   </select>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-stone-100 border border-stone-200 space-y-2 text-xs text-stone-700">
-                  <strong className="block text-stone-900">
-                    💡 Dica para Links `/amigo-secreto/8f7a2c91` na Vercel:
-                  </strong>
-                  <p>
-                    Para que a Vercel abra links com barra (`/amigo-secreto/...`)
-                    diretamente sem erro 404, crie um arquivo chamado{' '}
-                    <code>vercel.json</code> na raiz do seu repositório GitHub com
-                    este conteúdo:
-                  </p>
-                  <pre className="bg-stone-900 text-amber-300 p-3 rounded-xl font-mono text-[11px] overflow-x-auto">
-                    {`{\n  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]\n}`}
-                  </pre>
-                </div>
-
                 <div className="flex justify-end pt-2">
                   <button
                     type="submit"
@@ -3146,18 +3163,16 @@ Boas festas! 🎅🎄`;
         )}
       </main>
 
-      {/* ========================================================================
-          MODAL: CADASTRO E EDIÇÃO MANUAL DE PARTICIPANTE
-         ======================================================================== */}
+      {/* MODAL SIMPLIFICADO: CADASTRAR APENAS NOME E WHATSAPP */}
       {participantModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl border border-stone-200 space-y-5 my-8">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-stone-200 space-y-5 my-8">
             <div className="flex items-center justify-between pb-3 border-b border-stone-200">
               <h3 className="text-xl font-extrabold text-stone-900 flex items-center gap-2">
                 <UserPlus className="w-6 h-6 text-red-800" />
                 {editingParticipantId
-                  ? 'Editar Dados do Participante'
-                  : 'Cadastrar Novo Participante'}
+                  ? 'Editar Participante'
+                  : 'Cadastrar Participante'}
               </h3>
               <button
                 type="button"
@@ -3169,116 +3184,40 @@ Boas festas! 🎅🎄`;
             </div>
 
             <form onSubmit={handleSaveParticipant} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold uppercase text-stone-700 mb-1">
-                    Nome Completo *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formName}
-                    onChange={(e) => setFormName(e.target.value)}
-                    placeholder="Ex: Pedro Henrique"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase text-emerald-900 mb-1">
-                    WhatsApp com DDD *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formPhone}
-                    onChange={(e) => setFormPhone(e.target.value)}
-                    placeholder="Ex: (31) 99999-9999"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-sm font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold uppercase text-emerald-900 mb-1">
-                    🎁 O que gostaria de ganhar (Opcional)
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={formWant}
-                    onChange={(e) => setFormWant(e.target.value)}
-                    placeholder="Ex: Perfume, camiseta, livros..."
-                    className="w-full px-3.5 py-2 rounded-xl border border-stone-300 text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase text-red-900 mb-1">
-                    🚫 O que NÃO gostaria de ganhar (Opcional)
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={formDontWant}
-                    onChange={(e) => setFormDontWant(e.target.value)}
-                    placeholder="Ex: Meias, canecas..."
-                    className="w-full px-3.5 py-2 rounded-xl border border-stone-300 text-sm"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-bold uppercase text-stone-700 mb-1">
-                    👟 Calçado
-                  </label>
-                  <input
-                    type="text"
-                    value={formShoe}
-                    onChange={(e) => setFormShoe(e.target.value)}
-                    placeholder="Ex: 40"
-                    className="w-full px-3 py-2 rounded-xl border border-stone-300 text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase text-stone-700 mb-1">
-                    👕 Camisa / Blusa
-                  </label>
-                  <input
-                    type="text"
-                    value={formShirt}
-                    onChange={(e) => setFormShirt(e.target.value)}
-                    placeholder="Ex: P, M, G"
-                    className="w-full px-3 py-2 rounded-xl border border-stone-300 text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase text-stone-700 mb-1">
-                    👖 Calça
-                  </label>
-                  <input
-                    type="text"
-                    value={formPants}
-                    onChange={(e) => setFormPants(e.target.value)}
-                    placeholder="Ex: 38, 42"
-                    className="w-full px-3 py-2 rounded-xl border border-stone-300 text-sm"
-                  />
-                </div>
-              </div>
-
               <div>
                 <label className="block text-xs font-bold uppercase text-stone-700 mb-1">
-                  ✨ Observações Adicionais / Preferências
+                  Nome Completo *
                 </label>
                 <input
                   type="text"
-                  value={formNotes}
-                  onChange={(e) => setFormNotes(e.target.value)}
-                  placeholder="Ex: Gosta de leitura, prefere cores claras..."
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 text-sm"
+                  required
+                  autoFocus
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                  placeholder="Ex: Pedro Henrique"
+                  className="w-full px-4 py-3 rounded-xl border border-stone-300 text-sm"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase text-emerald-900 mb-1">
+                  WhatsApp com DDD *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formPhone}
+                  onChange={(e) => setFormPhone(e.target.value)}
+                  placeholder="Ex: 31999999999"
+                  className="w-full px-4 py-3 rounded-xl border border-stone-300 text-sm font-mono"
+                />
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-950">
+                🎁 <strong>Dicas de Presente:</strong> Você não precisa
+                preencher nada sobre presentes aqui! Quando o participante abrir
+                o link dele no WhatsApp, terá um botão{' '}
+                <strong>"Dar Dica de Presente"</strong> para ele mesmo preencher.
               </div>
 
               <div className="flex justify-end gap-2.5 pt-3 border-t border-stone-200">
@@ -3304,24 +3243,18 @@ Boas festas! 🎅🎄`;
         </div>
       )}
 
-      {/* ========================================================================
-          MODAL: IMPORTAÇÃO DE PARTICIPANTES VIA ARQUIVO CSV COM PRÉVIA EDITÁVEL
-         ======================================================================== */}
+      {/* MODAL SIMPLIFICADO: IMPORTAR PARTICIPANTES VIA CSV (APENAS NOME E TELEFONE) */}
       {csvModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-5xl w-full p-6 sm:p-8 shadow-2xl border border-stone-200 space-y-6 my-8 max-h-[92vh] overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-3xl w-full p-6 sm:p-8 shadow-2xl border border-stone-200 space-y-6 my-8 max-h-[92vh] overflow-y-auto">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-stone-200">
               <div>
                 <h3 className="text-xl font-extrabold text-stone-900 flex items-center gap-2">
                   <FileSpreadsheet className="w-6 h-6 text-emerald-800" />
-                  Importar Participantes via Arquivo CSV
+                  Importar Participantes via CSV
                 </h3>
                 <p className="text-xs text-stone-500 mt-0.5">
-                  Colunas aceitas:{' '}
-                  <code>
-                    nome, telefone, gostaria_de_ganhar, nao_gostaria_de_ganhar,
-                    tamanho_calcado, tamanho_camisa, tamanho_calca, observacoes
-                  </code>
+                  Basta informar apenas <code>nome,telefone</code>
                 </p>
               </div>
 
@@ -3344,7 +3277,6 @@ Boas festas! 🎅🎄`;
               </div>
             </div>
 
-            {/* Seleção do arquivo CSV ou colagem direta */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div
                 onClick={() => fileInputRef.current?.click()}
@@ -3352,10 +3284,10 @@ Boas festas! 🎅🎄`;
               >
                 <Upload className="w-8 h-8 text-emerald-700 mb-2" />
                 <strong className="text-sm text-emerald-950">
-                  Clique para selecionar o arquivo .CSV do computador
+                  Clique para selecionar o arquivo .CSV
                 </strong>
                 <span className="text-xs text-stone-500 mt-1">
-                  Validação automática de nomes e números de WhatsApp
+                  Apenas Nome e WhatsApp com DDD
                 </span>
                 <input
                   ref={fileInputRef}
@@ -3368,7 +3300,7 @@ Boas festas! 🎅🎄`;
 
               <div>
                 <label className="block text-xs font-bold uppercase text-stone-600 mb-1">
-                  Ou cole os dados CSV diretamente aqui:
+                  Ou cole a lista (nome,telefone) aqui:
                 </label>
                 <textarea
                   rows={4}
@@ -3378,34 +3310,29 @@ Boas festas! 🎅🎄`;
                     setCsvPreviewRows(parseCsvText(e.target.value));
                   }}
                   placeholder={
-                    'nome,telefone,gostaria_de_ganhar,nao_gostaria_de_ganhar,tamanho_calcado,tamanho_camisa,tamanho_calca,observacoes\nPedro Henrique,31999999999,Perfume,Meias,40,M,40,Gosta de tecnologia'
+                    'nome,telefone\nPedro Henrique,31999999999\nMaria Silva,31988888888'
                   }
                   className="w-full p-3 rounded-xl border border-stone-300 font-mono text-xs"
                 />
               </div>
             </div>
 
-            {/* Prévia dos registros e correção em tempo real */}
             {validatedCsvRows.length > 0 && (
               <div className="space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-2 p-3.5 rounded-2xl bg-stone-100 border border-stone-200 text-xs">
                   <div className="flex items-center gap-4">
                     <span className="font-bold text-stone-800">
-                      Total na prévia: {validatedCsvRows.length}
+                      Total: {validatedCsvRows.length}
                     </span>
                     <span className="font-bold text-emerald-700">
-                      ✅ Válidos para importar:{' '}
+                      ✅ Válidos:{' '}
                       {validatedCsvRows.filter((r) => r.isValid).length}
                     </span>
                     <span className="font-bold text-red-700">
-                      ⚠️ Com erros/duplicados:{' '}
+                      ⚠️ Erros:{' '}
                       {validatedCsvRows.filter((r) => !r.isValid).length}
                     </span>
                   </div>
-                  <span className="text-stone-500">
-                    Você pode corrigir qualquer campo diretamente nas caixas abaixo
-                    antes de confirmar:
-                  </span>
                 </div>
 
                 <div className="overflow-x-auto rounded-2xl border border-stone-200 max-h-72">
@@ -3413,10 +3340,8 @@ Boas festas! 🎅🎄`;
                     <thead>
                       <tr className="bg-stone-100 border-b border-stone-200 font-bold text-stone-600">
                         <th className="py-2.5 px-3">Status</th>
-                        <th className="py-2.5 px-3">Nome *</th>
-                        <th className="py-2.5 px-3">Telefone (DDD) *</th>
-                        <th className="py-2.5 px-3">Gostaria de Ganhar</th>
-                        <th className="py-2.5 px-3">Calçado / Camisa / Calça</th>
+                        <th className="py-2.5 px-3">Nome Completo *</th>
+                        <th className="py-2.5 px-3">WhatsApp (DDD) *</th>
                         <th className="py-2.5 px-3">Remover</th>
                       </tr>
                     </thead>
@@ -3424,9 +3349,7 @@ Boas festas! 🎅🎄`;
                       {validatedCsvRows.map((row) => (
                         <tr
                           key={row.tempId}
-                          className={
-                            row.isValid ? 'bg-white' : 'bg-red-50/70'
-                          }
+                          className={row.isValid ? 'bg-white' : 'bg-red-50/70'}
                         >
                           <td className="py-2 px-3">
                             {row.isValid ? (
@@ -3435,7 +3358,7 @@ Boas festas! 🎅🎄`;
                                 OK
                               </span>
                             ) : (
-                              <span className="text-red-700 font-bold block max-w-[160px]">
+                              <span className="text-red-700 font-bold block">
                                 ⚠️ {row.errorText}
                               </span>
                             )}
@@ -3451,7 +3374,7 @@ Boas festas! 🎅🎄`;
                                   e.target.value
                                 )
                               }
-                              className="w-36 px-2 py-1 rounded border border-stone-300"
+                              className="w-full px-2.5 py-1.5 rounded border border-stone-300"
                             />
                           </td>
                           <td className="py-2 px-3">
@@ -3465,65 +3388,8 @@ Boas festas! 🎅🎄`;
                                   e.target.value
                                 )
                               }
-                              className="w-32 px-2 py-1 rounded border border-stone-300 font-mono"
+                              className="w-full px-2.5 py-1.5 rounded border border-stone-300 font-mono"
                             />
-                          </td>
-                          <td className="py-2 px-3">
-                            <input
-                              type="text"
-                              value={row.gostaria_de_ganhar}
-                              onChange={(e) =>
-                                handleUpdateCsvCell(
-                                  row.tempId,
-                                  'gostaria_de_ganhar',
-                                  e.target.value
-                                )
-                              }
-                              className="w-40 px-2 py-1 rounded border border-stone-300"
-                            />
-                          </td>
-                          <td className="py-2 px-3">
-                            <div className="flex items-center gap-1">
-                              <input
-                                type="text"
-                                value={row.tamanho_calcado}
-                                onChange={(e) =>
-                                  handleUpdateCsvCell(
-                                    row.tempId,
-                                    'tamanho_calcado',
-                                    e.target.value
-                                  )
-                                }
-                                placeholder="Calç"
-                                className="w-12 px-1.5 py-1 rounded border border-stone-300"
-                              />
-                              <input
-                                type="text"
-                                value={row.tamanho_camisa}
-                                onChange={(e) =>
-                                  handleUpdateCsvCell(
-                                    row.tempId,
-                                    'tamanho_camisa',
-                                    e.target.value
-                                  )
-                                }
-                                placeholder="Cam"
-                                className="w-12 px-1.5 py-1 rounded border border-stone-300"
-                              />
-                              <input
-                                type="text"
-                                value={row.tamanho_calca}
-                                onChange={(e) =>
-                                  handleUpdateCsvCell(
-                                    row.tempId,
-                                    'tamanho_calca',
-                                    e.target.value
-                                  )
-                                }
-                                placeholder="Calça"
-                                className="w-12 px-1.5 py-1 rounded border border-stone-300"
-                              />
-                            </div>
                           </td>
                           <td className="py-2 px-3">
                             <button
@@ -3567,9 +3433,7 @@ Boas festas! 🎅🎄`;
         </div>
       )}
 
-      {/* ========================================================================
-          MODAL: REVISAR MENSAGEM PERSONALIZADA DO WHATSAPP
-         ======================================================================== */}
+      {/* MODAL: REVISAR MENSAGEM PERSONALIZADA DO WHATSAPP */}
       {previewMessageModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-stone-200 space-y-4">
@@ -3589,18 +3453,9 @@ Boas festas! 🎅🎄`;
             <pre className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs sm:text-sm text-stone-800 whitespace-pre-wrap font-sans leading-relaxed">
               {buildWhatsAppMessage(
                 previewMessageModal.participantName,
-                previewMessageModal.token,
-                decodePinFromTokenDoc(previewMessageModal),
-                true
+                previewMessageModal.token
               )}
             </pre>
-
-            <p className="text-[11px] text-stone-500">
-              🔒 Por segurança, o código de 6 dígitos aparece oculto nesta prévia
-              para preservar o sigilo do sorteio, mas é incluído automaticamente
-              no envio para o WhatsApp de{' '}
-              <strong>{previewMessageModal.participantName}</strong>.
-            </p>
 
             <div className="flex justify-end gap-2 pt-2">
               <button
@@ -3627,9 +3482,7 @@ Boas festas! 🎅🎄`;
         </div>
       )}
 
-      {/* ========================================================================
-          MODAL DE CONFIRMAÇÃO ADMINISTRATIVA
-         ======================================================================== */}
+      {/* MODAL DE CONFIRMAÇÃO ADMINISTRATIVA */}
       {confirmModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-stone-200 space-y-4">
