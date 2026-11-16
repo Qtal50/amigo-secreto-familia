@@ -379,13 +379,15 @@ function hasFilledGiftHints(p) {
 // ============================================================================
 const DEFAULT_WHATSAPP_TEMPLATE = `🎄 Olá, *{nome}*!
 
-O sorteio do *{evento}* foi realizado.
+O sorteio do amigo oculto foi realizado! 🎁
 
-Para descobrir agora mesmo quem você tirou — e também registrar suas dicas do que gostaria de ganhar — acesse seu link individual exclusivo:
+Quer descobrir quem você tirou?
+É muito simples! Basta clicar no link abaixo para ver quem é seu amigo secreto:
 
 {link}
 
-Este acesso é pessoal e direto (não precisa de senha). Guarde este link com você e boas festas! ✨`;
+Depois, você também poderá informar algumas sugestões de presentes que gostaria de ganhar, para ajudar seu amigo secreto na escolha.
+Este acesso é pessoal. Guarde este link com você e boas festas! ✨`;
 
 /**
  * Monta a mensagem personalizada do WhatsApp substituindo as variáveis {nome}, {evento} e {link}
