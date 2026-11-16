@@ -21,16 +21,10 @@ import {
   Users,
   Shield,
   Lock,
-  Key,
   LogIn,
   LogOut,
-  Copy,
-  Check,
-  Share2,
-  Calendar,
   Heart,
   ThumbsDown,
-  Shirt,
   AlertTriangle,
   RefreshCw,
   Eye,
@@ -39,43 +33,35 @@ import {
   Trash2,
   CheckCircle2,
   Clock,
-  ChevronRight,
-  ChevronLeft,
-  Plus,
   Search,
-  Crown,
   Star,
-  Database,
-  Server,
   UserPlus,
   Edit3,
   Send,
   Shuffle,
   Upload,
   Download,
-  Phone,
   FileSpreadsheet,
   Play,
   Pause,
   CheckCircle,
   XCircle,
-  ExternalLink,
-  Smartphone,
-  Zap,
-  HelpCircle,
+  ArrowRight,
+  ArrowUpRight,
+  MessageSquare,
 } from 'lucide-react';
 
 // ============================================================================
-// 1. CONFIGURAÇÃO HÍBRIDA DO FIREBASE (AMBIENTE DE PREVIEW + VERCEL DO USUÁRIO)
+// 1. CONFIGURAÇÃO DO FIREBASE (COMPATÍVEL COM CANVAS E COM VERCEL/VITE DIRETO)
 // ============================================================================
 const defaultFirebaseConfig = {
-  apiKey: 'AIzaSyDROloG5oTL6x-mzAIUdfmldtwyMEnmNx8',
-  authDomain: 'amigo-secreto-familia-d3db6.firebaseapp.com',
-  projectId: 'amigo-secreto-familia-d3db6',
-  storageBucket: 'amigo-secreto-familia-d3db6.firebasestorage.app',
-  messagingSenderId: '823718992830',
-  appId: '1:823718992830:web:e77ce75b4adf4771abf7ef',
-  measurementId: 'G-JD70XVYV04',
+  apiKey: "AIzaSyDROloG5oTL6x-mzAIUdfmldtwyMEnmNx8",
+  authDomain: "amigo-secreto-familia-d3db6.firebaseapp.com",
+  projectId: "amigo-secreto-familia-d3db6",
+  storageBucket: "amigo-secreto-familia-d3db6.firebasestorage.app",
+  messagingSenderId: "823718992830",
+  appId: "1:823718992830:web:e77ce75b4adf4771abf7ef",
+  measurementId: "G-JD70XVYV04"
 };
 
 const firebaseConfig =
@@ -93,11 +79,11 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // ============================================================================
-// 2. CRIPTOGRAFIA ZERO-KNOWLEDGE (ACESSO DIRETO PELO LINK EXCLUSIVO)
+// 2. CRIPTOGRAFIA ZERO-KNOWLEDGE E UTILITÁRIOS DE TELEFONE / SORTEIO
 // ============================================================================
 
 /**
- * Gera um hash SHA-256 hexadecimal (usado apenas na senha do Administrador)
+ * Gera um hash SHA-256 hexadecimal (usado na senha do Administrador Único)
  */
 async function sha256Hash(text, salt = 'natal-familia-2026-sec') {
   const payload = `${salt}::${String(text).trim()}`;
@@ -127,7 +113,7 @@ async function deriveAesKeyFromToken(token) {
 
 /**
  * Criptografa o resultado individual do participante usando o Token do seu link exclusivo.
- * Assim o familiar abre direto sem precisar digitar código, e o painel admin continua sem expor os pares!
+ * Assim o familiar abre direto sem precisar digitar código, e o painel admin nunca expõe os pares.
  */
 async function encryptSecretResult(token, payloadObject) {
   const key = await deriveAesKeyFromToken(token);
@@ -218,7 +204,7 @@ function formatPhoneDisplay(phone) {
 }
 
 /**
- * Formata número com DDI 55 (Brasil) para envio em APIs de WhatsApp
+ * Formata número garantindo automaticamente o DDI 55 (Brasil) na frente de números com 10 ou 11 dígitos
  */
 function formatPhoneForWhatsApp(phone) {
   const digits = sanitizePhone(phone);
@@ -230,7 +216,7 @@ function formatPhoneForWhatsApp(phone) {
 }
 
 /**
- * Valida se o telefone possui DDD + número válido (10 ou 11 dígitos locais, ou 12-13 com 55)
+ * Valida se o telefone possui DDD + número brasileiro válido (10 ou 11 dígitos locais, ou 12-13 com 55)
  */
 function isValidBrazilianPhone(phone) {
   const digits = sanitizePhone(phone);
@@ -240,8 +226,8 @@ function isValidBrazilianPhone(phone) {
 }
 
 /**
- * Algoritmo de Sorteio (Ciclo Hamiltoniano Aleatório / Derangement)
- * Garante 100% que ninguém tire a si mesmo, todos tirem 1 pessoa e todos sejam sorteados 1 vez.
+ * Algoritmo de Sorteio (Ciclo Único Fechado / Derangement)
+ * Garante matematicamente que ninguém tire a si mesmo, todos tirem 1 pessoa e sejam sorteados 1 vez.
  */
 function createSecretSantaDerangement(participants) {
   if (!participants || participants.length < 2) {
@@ -365,7 +351,7 @@ function extractTokenFromLocation() {
       params.get('acesso');
     if (queryToken) return queryToken.trim().toLowerCase();
   } catch (e) {
-    // Ignora erros de leitura em iframes restritos
+    // Ignora bloqueios de leitura em iframes restritos
   }
   return null;
 }
@@ -386,111 +372,132 @@ function hasFilledGiftHints(p) {
 }
 
 // ============================================================================
-// 3. ELEMENTOS VISUAIS NATALINOS (SVGs)
+// MODELO PADRÃO E FUNÇÃO DE CONSTRUÇÃO DA MENSAGEM DO WHATSAPP
+// Você pode editar este texto padrão aqui no código OU direto na caixa de texto
+// dentro da aba "02. WhatsApp" no Painel Administrativo!
+// Variáveis suportadas: {nome}, {nome_completo}, {evento}, {link}
+// ============================================================================
+const DEFAULT_WHATSAPP_TEMPLATE = `🎄 Olá, *{nome}*!
+
+O sorteio do *{evento}* foi realizado.
+
+Para descobrir agora mesmo quem você tirou — e também registrar suas dicas do que gostaria de ganhar — acesse seu link individual exclusivo:
+
+{link}
+
+Este acesso é pessoal e direto (não precisa de senha). Guarde este link com você e boas festas! ✨`;
+
+/**
+ * Monta a mensagem personalizada do WhatsApp substituindo as variáveis {nome}, {evento} e {link}
+ */
+function buildWhatsAppMessage(participant, eventName, link, customTemplate) {
+  const fullName = String(
+    typeof participant === 'string'
+      ? participant
+      : participant?.fullName || participant?.participantName || 'Familiar'
+  ).trim();
+  const firstName = fullName.split(' ')[0] || 'Familiar';
+  const activeTemplate =
+    customTemplate && customTemplate.trim().length > 0
+      ? customTemplate
+      : DEFAULT_WHATSAPP_TEMPLATE;
+
+  return activeTemplate
+    .replace(/\{nome\}/gi, firstName)
+    .replace(/\{nome_completo\}/gi, fullName)
+    .replace(/\{evento\}/gi, eventName || 'Amigo Secreto da Família 2026')
+    .replace(/\{link\}/gi, link);
+}
+
+// ============================================================================
+// 3. ELEMENTOS GEOMÉTRICOS / ARQUITETÔNICOS SWISS DESIGN (SVGs DE LINHA FINA)
 // ============================================================================
 
-const ChristmasTreeSVG = ({ className = 'w-8 h-8' }) => (
-  <svg viewBox="0 0 64 64" fill="none" className={className}>
-    <path
-      d="M32 6L14 28H24L10 46H26L26 58H38V46H54L40 28H50L32 6Z"
-      fill="#065F46"
-      stroke="#F59E0B"
-      strokeWidth="2.5"
-      strokeLinejoin="round"
+const ArchitecturalLogoMark = ({ className = 'w-7 h-7' }) => (
+  <svg viewBox="0 0 40 40" fill="none" className={className}>
+    <rect
+      x="1.5"
+      y="1.5"
+      width="37"
+      height="37"
+      stroke="currentColor"
+      strokeWidth="1.2"
     />
-    <rect x="27" y="48" width="10" height="10" rx="1" fill="#78350F" />
-    <circle cx="32" cy="6" r="4" fill="#FBBF24" />
-    <circle cx="26" cy="24" r="2.5" fill="#EF4444" />
-    <circle cx="38" cy="32" r="2.5" fill="#FBBF24" />
-    <circle cx="22" cy="40" r="2.5" fill="#EF4444" />
-    <circle cx="41" cy="41" r="2.5" fill="#38BDF8" />
+    <line
+      x1="1.5"
+      y1="1.5"
+      x2="38.5"
+      y2="38.5"
+      stroke="currentColor"
+      strokeWidth="1"
+    />
+    <line
+      x1="20"
+      y1="1.5"
+      x2="20"
+      y2="38.5"
+      stroke="currentColor"
+      strokeWidth="1"
+    />
+    <line
+      x1="1.5"
+      y1="20"
+      x2="38.5"
+      y2="20"
+      stroke="currentColor"
+      strokeWidth="1"
+    />
+    <circle
+      cx="20"
+      cy="20"
+      r="7"
+      fill="#FAF8F5"
+      stroke="#8E3B36"
+      strokeWidth="1.2"
+    />
+    <path
+      d="M20 15L16.5 22.5H23.5L20 15Z"
+      fill="#2C4035"
+    />
   </svg>
 );
 
-const FestiveGiftBoxSVG = ({
-  isOpening = false,
-  isOpened = false,
-  className = 'w-32 h-32',
-}) => (
-  <svg
-    viewBox="0 0 120 120"
-    fill="none"
-    className={`${className} transition-transform duration-500 ${
-      isOpening ? 'animate-bounce scale-110' : ''
-    }`}
-  >
-    <circle
-      cx="60"
-      cy="65"
-      r="48"
-      fill="url(#goldGlow2026)"
-      opacity={isOpened ? '0.95' : '0.35'}
+const MinimalBotanicalFrameSVG = ({ className = 'w-full h-full' }) => (
+  <svg viewBox="0 0 320 380" fill="none" className={className}>
+    {/* Fundo em tom Taupe / Marrom-Claro Amendoado */}
+    <rect x="40" y="20" width="250" height="310" fill="#EBE5DC" />
+    {/* Bloco Arquitetônico Verde-Pinho Suave */}
+    <rect x="20" y="60" width="210" height="270" fill="#2C4035" />
+    {/* Círculo Terracota Minimalista */}
+    <circle cx="175" cy="145" r="46" fill="#8E3B36" opacity="0.88" />
+    {/* Pinheiro Geométrico Minimalista */}
+    <path
+      d="M115 95L65 185H100L55 265H175L130 185H165L115 95Z"
+      stroke="#FAF8F5"
+      strokeWidth="1.5"
+      fill="none"
     />
-    <g
-      className={`transition-all duration-700 origin-center ${
-        isOpened
-          ? '-translate-y-8 -rotate-12 opacity-90'
-          : isOpening
-          ? '-translate-y-2 rotate-3'
-          : ''
-      }`}
-    >
-      <path
-        d="M60 28C60 28 45 10 34 18C23 26 42 36 60 32Z"
-        fill="#F59E0B"
-        stroke="#B45309"
-        strokeWidth="2"
-      />
-      <path
-        d="M60 28C60 28 75 10 86 18C97 26 78 36 60 32Z"
-        fill="#FBBF24"
-        stroke="#B45309"
-        strokeWidth="2"
-      />
-      <rect
-        x="20"
-        y="28"
-        width="80"
-        height="16"
-        rx="4"
-        fill="#DC2626"
-        stroke="#991B1B"
-        strokeWidth="2"
-      />
-      <rect x="53" y="28" width="14" height="16" fill="#FBBF24" />
-    </g>
-    {isOpened && (
-      <g className="animate-pulse">
-        <circle cx="40" cy="24" r="3.5" fill="#FDE047" />
-        <circle cx="82" cy="20" r="4.5" fill="#FDE047" />
-        <circle cx="60" cy="14" r="5.5" fill="#FEF08A" />
-      </g>
-    )}
+    <line
+      x1="115"
+      y1="95"
+      x2="115"
+      y2="295"
+      stroke="#8C6D53"
+      strokeWidth="1.5"
+    />
+    {/* Moldura Deslocada de 1px Estilo Editorial */}
     <rect
-      x="25"
-      y="44"
-      width="70"
-      height="58"
-      rx="5"
-      fill="#B91C1C"
-      stroke="#7F1D1D"
-      strokeWidth="2"
+      x="55"
+      y="40"
+      width="235"
+      height="310"
+      stroke="#181816"
+      strokeWidth="1.2"
     />
-    <rect x="53" y="44" width="14" height="58" fill="#FBBF24" />
-    <rect x="25" y="67" width="70" height="12" fill="#FBBF24" />
-    <defs>
-      <radialGradient
-        id="goldGlow2026"
-        cx="0"
-        cy="0"
-        r="1"
-        gradientUnits="userSpaceOnUse"
-        gradientTransform="translate(60 65) rotate(90) scale(48)"
-      >
-        <stop stopColor="#FDE047" />
-        <stop offset="1" stopColor="#F59E0B" stopOpacity="0" />
-      </radialGradient>
-    </defs>
+    <circle cx="245" cy="75" r="3" fill="#8C6D53" />
+    <circle cx="260" cy="75" r="3" fill="#8C6D53" />
+    <circle cx="245" cy="90" r="3" fill="#8C6D53" />
+    <circle cx="260" cy="90" r="3" fill="#8C6D53" />
   </svg>
 );
 
@@ -499,7 +506,20 @@ const FestiveGiftBoxSVG = ({
 // ============================================================================
 
 export default function App() {
-  // Autenticação Firebase (Camada de Conexão Segura)
+  // Carrega dinamicamente as fontes editoriais (Cormorant Garamond + Plus Jakarta Sans)
+  useEffect(() => {
+    const linkId = 'editorial-swiss-fonts-2026';
+    if (!document.getElementById(linkId)) {
+      const link = document.createElement('link');
+      link.id = linkId;
+      link.rel = 'stylesheet';
+      link.href =
+        'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,400;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap';
+      document.head.appendChild(link);
+    }
+  }, []);
+
+  // Autenticação Firebase
   const [firebaseUser, setFirebaseUser] = useState(null);
   const [loadingFirebase, setLoadingFirebase] = useState(true);
 
@@ -508,9 +528,9 @@ export default function App() {
   const [participants, setParticipants] = useState([]);
   const [accessTokens, setAccessTokens] = useState([]);
 
-  // Roteamento entre os 2 Ambientes Exclusivos:
-  // Se activeParticipantToken != null -> Ambiente 2 (Página Individual do Familiar)
-  // Se activeParticipantToken == null -> Ambiente 1 (Login / Painel Administrativo)
+  // Roteamento entre os 2 Ambientes:
+  // activeParticipantToken != null -> Ambiente 2 (Página Individual do Familiar)
+  // activeParticipantToken == null -> Ambiente 1 (Login / Painel Administrativo)
   const [activeParticipantToken, setActiveParticipantToken] = useState(() =>
     extractTokenFromLocation()
   );
@@ -530,7 +550,7 @@ export default function App() {
   // Filtros e Buscas de Participantes
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Modal de Cadastro / Edição Simplificado (Apenas Nome e WhatsApp para o Admin)
+  // Modal de Cadastro / Edição Simplificado (Apenas Nome e WhatsApp)
   const [participantModalOpen, setParticipantModalOpen] = useState(false);
   const [editingParticipantId, setEditingParticipantId] = useState(null);
   const [formName, setFormName] = useState('');
@@ -549,6 +569,9 @@ export default function App() {
   const [waApiToken, setWaApiToken] = useState('');
   const [waClientToken, setWaClientToken] = useState('');
   const [waDelaySeconds, setWaDelaySeconds] = useState(4);
+  const [customWaTemplate, setCustomWaTemplate] = useState(
+    DEFAULT_WHATSAPP_TEMPLATE
+  );
   const [isAutoDispatching, setIsAutoDispatching] = useState(false);
   const [dispatchProgress, setDispatchProgress] = useState({
     current: 0,
@@ -568,7 +591,7 @@ export default function App() {
   );
   const [urlFormatPreference, setUrlFormatPreference] = useState('path');
 
-  // Estados da Página Individual do Participante (Ambiente 2 - Acesso Direto Sem Código!)
+  // Estados da Página Individual do Participante (Ambiente 2 - Acesso Direto Sem Código)
   const [decryptedResult, setDecryptedResult] = useState(null);
   const [isDecryptingLink, setIsDecryptingLink] = useState(false);
   const [myHintsModalOpen, setMyHintsModalOpen] = useState(false);
@@ -664,6 +687,7 @@ export default function App() {
           if (data.waInstanceId) setWaInstanceId(data.waInstanceId);
           if (data.waApiToken) setWaApiToken(data.waApiToken);
           if (data.waClientToken) setWaClientToken(data.waClientToken);
+          if (data.customWaTemplate) setCustomWaTemplate(data.customWaTemplate);
           if (data.urlFormatPreference)
             setUrlFormatPreference(data.urlFormatPreference);
         } else {
@@ -757,7 +781,7 @@ export default function App() {
       }
 
       if (!isValidBrazilianPhone(cleanPhone)) {
-        errors.push('Telefone inválido (use DDD + número)');
+        errors.push('Telefone inválido (DDD + número)');
       } else if (existingPhones.has(cleanPhone)) {
         errors.push('WhatsApp já cadastrado');
       } else if (seenPhonesInBatch.has(cleanPhone)) {
@@ -786,7 +810,7 @@ export default function App() {
     );
   }, [accessTokens, activeParticipantToken]);
 
-  // Registro do PRÓPRIO participante dono do link (para preencher "Minhas Dicas de Presente")
+  // Documento do PRÓPRIO participante dono do link (para preencher "Dar Dica de Presente")
   const myOwnParticipantDoc = useMemo(() => {
     if (!currentParticipantTokenDoc) return null;
     return (
@@ -796,7 +820,7 @@ export default function App() {
     );
   }, [participants, currentParticipantTokenDoc]);
 
-  // Registro em TEMPO REAL da PESSOA SORTEADA (sempre que ela atualizar as dicas dela, atualiza aqui na hora!)
+  // Documento em TEMPO REAL da PESSOA SORTEADA (sempre que ela atualizar as dicas, reflete aqui na hora)
   const drawnPersonLatestData = useMemo(() => {
     if (!decryptedResult) return null;
     const found = participants.find(
@@ -805,7 +829,7 @@ export default function App() {
     return found || decryptedResult;
   }, [decryptedResult, participants]);
 
-  // Descriptografa AUTOMATICAMENTE o Amigo Secreto assim que o familiar abre o link exclusivo (Sem precisar de código!)
+  // Descriptografa AUTOMATICAMENTE o Amigo Secreto assim que o familiar abre o link exclusivo (Sem código!)
   useEffect(() => {
     let isMounted = true;
     const autoRevealFromLink = async () => {
@@ -825,7 +849,6 @@ export default function App() {
         if (!isMounted) return;
         setDecryptedResult(secretData);
 
-        // Registra que o participante já abriu seu link (apenas se não for simulação do admin)
         if (
           !isSimulatingParticipant &&
           !currentParticipantTokenDoc.hasAccessedResult
@@ -866,28 +889,6 @@ export default function App() {
       return `${origin}/?amigo-secreto=${token}`;
     }
     return `${origin}/amigo-secreto/${token}`;
-  };
-
-  // ============================================================================
-  // PERSONALIZAÇÃO DA MENSAGEM DO WHATSAPP (SEM CÓDIGO, DIRETO NO LINK!)
-  // ============================================================================
-  const buildWhatsAppMessage = (participantName, token) => {
-    const firstName = String(participantName || 'Familiar')
-      .trim()
-      .split(' ')[0];
-    const link = buildParticipantLink(token);
-
-    return `🎄 Oi, *${firstName}*!
-
-O sorteio do *${eventName}* foi realizado! 🎅🎁
-
-Para ver agora mesmo quem você tirou (e também deixar suas dicas do que você gostaria de ganhar), basta clicar no seu link exclusivo abaixo:
-
-👉 ${link}
-
-🤫 *Importante:* Esse link é só seu! Não compartilhe com ninguém para manter o segredo da brincadeira.
-
-Boas festas! 🎄✨`;
   };
 
   // ============================================================================
@@ -941,6 +942,7 @@ Boas festas! 🎄✨`;
           drawStatus: 'waiting',
           drawTimestamp: null,
           urlFormatPreference: 'path',
+          customWaTemplate: DEFAULT_WHATSAPP_TEMPLATE,
           createdAt: new Date().toISOString(),
         }
       );
@@ -948,7 +950,7 @@ Boas festas! 🎄✨`;
       setIsAdminAuthenticated(true);
       setAdminPassInput('');
       setAdminConfirmPassInput('');
-      showToast('Administrador configurado com sucesso! Bem-vindo ao Painel.');
+      showToast('Credencial administrativa criada com sucesso.');
     } catch (err) {
       console.error('Erro ao configurar admin:', err);
       showToast('Erro ao salvar credenciais do administrador.', 'error');
@@ -982,7 +984,7 @@ Boas festas! 🎄✨`;
 
       setIsAdminAuthenticated(true);
       setAdminPassInput('');
-      showToast('Acesso administrativo autorizado! 🎄');
+      showToast('Sessão administrativa iniciada.');
     } catch (err) {
       console.error('Erro no login admin:', err);
       showToast('Falha ao validar login.', 'error');
@@ -992,7 +994,7 @@ Boas festas! 🎄✨`;
   };
 
   // ============================================================================
-  // 8. GERENCIAMENTO SIMPLIFICADO DE PARTICIPANTES (SÓ NOME E WHATSAPP)
+  // 8. GERENCIAMENTO SIMPLIFICADO DE PARTICIPANTES (APENAS NOME E WHATSAPP)
   // ============================================================================
 
   const openNewParticipantModal = () => {
@@ -1034,7 +1036,7 @@ Boas festas! 🎄✨`;
     );
     if (duplicatePhone) {
       showToast(
-        `O WhatsApp informado já está cadastrado para ${duplicatePhone.fullName}.`,
+        `O WhatsApp informado já pertence a ${duplicatePhone.fullName}.`,
         'error'
       );
       return;
@@ -1073,7 +1075,6 @@ Boas festas! 🎄✨`;
         { merge: true }
       );
 
-      // Sincroniza nome e telefone caso já tenha sido sorteado
       const linkedToken = accessTokens.find((t) => t.participantId === partId);
       if (linkedToken) {
         await updateDoc(
@@ -1096,8 +1097,8 @@ Boas festas! 🎄✨`;
       setParticipantModalOpen(false);
       showToast(
         editingParticipantId
-          ? `Dados de ${cleanName} atualizados!`
-          : `${cleanName} cadastrado(a) com sucesso!`
+          ? `Registro de ${cleanName} atualizado.`
+          : `${cleanName} adicionado(a) à lista.`
       );
     } catch (err) {
       console.error('Erro ao salvar participante:', err);
@@ -1110,18 +1111,18 @@ Boas festas! 🎄✨`;
   const handleDeleteParticipant = (part) => {
     if (drawStatus === 'drawn') {
       showToast(
-        'Não é permitido excluir participantes após o sorteio realizado. Caso necessário, reinicie o sorteio.',
+        'Não é permitido remover participantes após o sorteio. Reinicie o sorteio caso necessário.',
         'error'
       );
       return;
     }
 
     setConfirmModal({
-      title: `Excluir ${part.fullName}?`,
-      description: `Deseja remover ${part.fullName} (${formatPhoneDisplay(
+      title: `Remover ${part.fullName}?`,
+      description: `Esta ação excluirá ${part.fullName} (${formatPhoneDisplay(
         part.phone
-      )}) da lista de participantes?`,
-      confirmText: 'Sim, Excluir Participante',
+      )}) da relação de participantes antes do sorteio.`,
+      confirmText: 'Confirmar Exclusão',
       danger: true,
       onConfirm: async () => {
         await deleteDoc(
@@ -1141,7 +1142,6 @@ Boas festas! 🎄✨`;
     });
   };
 
-  // Modelo CSV Simplificado: apenas nome e telefone!
   const handleDownloadCsvTemplate = () => {
     const sampleCsv = [
       'nome,telefone',
@@ -1222,9 +1222,7 @@ Boas festas! 🎄✨`;
       setCsvModalOpen(false);
       setCsvPreviewRows([]);
       setCsvRawText('');
-      showToast(
-        `${validRows.length} participante(s) importado(s) com sucesso! 🎄`
-      );
+      showToast(`${validRows.length} participante(s) importado(s).`);
     } catch (err) {
       console.error('Erro na importação CSV:', err);
       showToast('Erro ao salvar participantes importados.', 'error');
@@ -1234,7 +1232,7 @@ Boas festas! 🎄✨`;
   };
 
   // ============================================================================
-  // 9. SISTEMA DE SORTEIO DIRETO (SEM CÓDIGO PIN, PROTEGIDO PELO LINK)
+  // 9. SISTEMA DE SORTEIO COM PRIVACIDADE TOTAL (ZERO-KNOWLEDGE)
   // ============================================================================
 
   const handleRequestDraw = () => {
@@ -1247,9 +1245,9 @@ Boas festas! 🎄✨`;
     }
 
     setConfirmModal({
-      title: 'Realizar Sorteio Oficial?',
-      description: `O sorteio será realizado agora envolvendo ${participants.length} participantes. Cada familiar receberá um link direto exclusivo pelo WhatsApp: ao clicar no link, já verá quem tirou e poderá preencher suas próprias dicas de presente!`,
-      confirmText: `Confirmar e Sortear (${participants.length} Participantes)`,
+      title: 'Executar Sorteio Oficial?',
+      description: `O sorteio será processado envolvendo ${participants.length} participantes ativos. Cada familiar receberá um link direto exclusivo: ao abrir o link no WhatsApp, verá imediatamente quem tirou e poderá cadastrar suas próprias dicas de presente.`,
+      confirmText: `Confirmar Sorteio (${participants.length} Pessoas)`,
       danger: false,
       onConfirm: executeZeroKnowledgeDraw,
     });
@@ -1341,7 +1339,7 @@ Boas festas! 🎄✨`;
 
       setAdminTab('whatsapp_dispatch');
       showToast(
-        'Sorteio concluído! Links diretos exclusivos prontos para disparo no WhatsApp.'
+        'Sorteio concluído. Links diretos prontos para distribuição via WhatsApp.'
       );
     } catch (err) {
       console.error('Erro ao realizar sorteio:', err);
@@ -1353,10 +1351,10 @@ Boas festas! 🎄✨`;
 
   const handleResetDraw = () => {
     setConfirmModal({
-      title: 'Cancelar e Reiniciar Sorteio?',
+      title: 'Invalidar e Reiniciar Sorteio?',
       description:
-        'ATENÇÃO: Todos os links individuais enviados anteriormente deixarão de funcionar imediatamente. As dicas de presentes já preenchidas pelos familiares serão preservadas.',
-      confirmText: 'Sim, Invalidar Sorteio Atual',
+        'Atenção: todos os links exclusivos gerados anteriormente serão invalidados. As dicas de presentes já preenchidas pelos participantes serão mantidas.',
+      confirmText: 'Confirmar Reinicialização',
       danger: true,
       onConfirm: async () => {
         setConfirmModal(null);
@@ -1394,9 +1392,7 @@ Boas festas! 🎄✨`;
           );
 
           setAdminTab('dashboard');
-          showToast(
-            'Sorteio reiniciado. Você já pode editar participantes e sortear novamente.'
-          );
+          showToast('Sorteio reiniciado com sucesso.');
         } catch (err) {
           console.error('Erro ao reiniciar sorteio:', err);
           showToast('Erro ao cancelar sorteio.', 'error');
@@ -1408,7 +1404,7 @@ Boas festas! 🎄✨`;
   };
 
   // ============================================================================
-  // 10. SALVAR DICAS DE PRESENTE PELO PRÓPRIO PARTICIPANTE (EM TEMPO REAL!)
+  // 10. SALVAR DICAS DE PRESENTE PELO PRÓPRIO PARTICIPANTE (EM TEMPO REAL)
   // ============================================================================
 
   const handleOpenMyGiftHintsModal = () => {
@@ -1451,7 +1447,7 @@ Boas festas! 🎄✨`;
 
       setMyHintsModalOpen(false);
       showToast(
-        'Suas dicas de presente foram salvas! Quem tirou você já consegue ver tudo atualizado. 🎁'
+        'Suas preferências foram salvas e já estão visíveis para quem tirou você.'
       );
     } catch (err) {
       console.error('Erro ao salvar dicas:', err);
@@ -1470,7 +1466,7 @@ Boas festas! 🎄✨`;
 
     if (waProvider === 'ultramsg') {
       if (!waInstanceId.trim() || !waApiToken.trim()) {
-        throw new Error('Preencha a Instância e o Token da UltraMsg.');
+        throw new Error('Preencha o Instance ID e o Token da UltraMsg.');
       }
       const rawInst = waInstanceId.trim();
       const instancePath = rawInst.startsWith('instance')
@@ -1495,9 +1491,7 @@ Boas festas! 🎄✨`;
 
     if (waProvider === 'zapi') {
       if (!waInstanceId.trim() || !waApiToken.trim()) {
-        throw new Error(
-          'Preencha o ID da Instância e o Token da Z-API nas configurações de disparo.'
-        );
+        throw new Error('Preencha o ID da Instância e o Token da Z-API.');
       }
       const url = `https://api.z-api.io/instances/${waInstanceId.trim()}/token/${waApiToken.trim()}/send-text`;
       const headers = { 'Content-Type': 'application/json' };
@@ -1583,7 +1577,7 @@ Boas festas! 🎄✨`;
       : accessTokens;
 
     if (queue.length === 0) {
-      showToast('Todos os participantes já receberam seus links no WhatsApp!');
+      showToast('Todos os participantes já receberam seus links no WhatsApp.');
       return;
     }
 
@@ -1609,9 +1603,12 @@ Boas festas! 🎄✨`;
       const tokenDoc = queue[i];
       setDispatchProgress({ current: i + 1, total: queue.length });
 
+      const link = buildParticipantLink(tokenDoc.token);
       const message = buildWhatsAppMessage(
         tokenDoc.participantName,
-        tokenDoc.token
+        eventName,
+        link,
+        customWaTemplate
       );
 
       setDispatchLogs((prev) => [
@@ -1680,7 +1677,7 @@ Boas festas! 🎄✨`;
 
     setIsAutoDispatching(false);
     showToast(
-      `Disparo finalizado: ${successCount} enviado(s) com sucesso${
+      `Disparo finalizado: ${successCount} enviado(s)${
         errorCount > 0 ? ` e ${errorCount} falha(s)` : ''
       }.`,
       errorCount > 0 && successCount === 0 ? 'error' : 'success'
@@ -1688,9 +1685,12 @@ Boas festas! 🎄✨`;
   };
 
   const handleSendDirectWhatsApp = async (tokenDoc, forceWaMe = false) => {
+    const link = buildParticipantLink(tokenDoc.token);
     const message = buildWhatsAppMessage(
       tokenDoc.participantName,
-      tokenDoc.token
+      eventName,
+      link,
+      customWaTemplate
     );
 
     if (!forceWaMe && waProvider !== 'wame_assist' && waApiToken.trim()) {
@@ -1717,7 +1717,7 @@ Boas festas! 🎄✨`;
           }
         );
         showToast(
-          `Mensagem disparada via API para ${tokenDoc.participantName}!`
+          `Mensagem enviada via API para ${tokenDoc.participantName}.`
         );
       } catch (err) {
         showToast(`Erro na API: ${err.message}`, 'error');
@@ -1776,11 +1776,13 @@ Boas festas! 🎄✨`;
           waInstanceId: waInstanceId.trim(),
           waApiToken: waApiToken.trim(),
           waClientToken: waClientToken.trim(),
+          customWaTemplate:
+            customWaTemplate.trim() || DEFAULT_WHATSAPP_TEMPLATE,
           urlFormatPreference,
         },
         { merge: true }
       );
-      showToast('Configurações salvas com sucesso!');
+      showToast('Configurações e modelo de mensagem salvos.');
     } catch (err) {
       showToast('Erro ao salvar configurações.', 'error');
     } finally {
@@ -1800,26 +1802,10 @@ Boas festas! 🎄✨`;
     setIsBusy(true);
     try {
       const demoList = [
-        {
-          id: 'demo_p1',
-          fullName: 'Pedro Henrique',
-          phone: '31999999999',
-        },
-        {
-          id: 'demo_p2',
-          fullName: 'Maria Silva',
-          phone: '31988888888',
-        },
-        {
-          id: 'demo_p3',
-          fullName: 'João Santos',
-          phone: '31977777777',
-        },
-        {
-          id: 'demo_p4',
-          fullName: 'Vó Ana Clara',
-          phone: '31966666666',
-        },
+        { id: 'demo_p1', fullName: 'Pedro Henrique', phone: '31999999999' },
+        { id: 'demo_p2', fullName: 'Maria Silva', phone: '31988888888' },
+        { id: 'demo_p3', fullName: 'João Santos', phone: '31977777777' },
+        { id: 'demo_p4', fullName: 'Vó Ana Clara', phone: '31966666666' },
       ];
 
       for (const item of demoList) {
@@ -1842,9 +1828,7 @@ Boas festas! 🎄✨`;
         );
       }
 
-      showToast(
-        '4 familiares de exemplo cadastrados! Agora você já pode clicar em REALIZAR SORTEIO.'
-      );
+      showToast('4 participantes de exemplo adicionados.');
     } catch (err) {
       showToast('Erro ao carregar exemplos.', 'error');
     } finally {
@@ -1852,26 +1836,43 @@ Boas festas! 🎄✨`;
     }
   };
 
+  // Estilos tipográficos inline para garantir precisão editorial Swiss Design
+  const fontSerifStyle = {
+    fontFamily: "'Cormorant Garamond', Georgia, serif",
+  };
+  const fontSansStyle = {
+    fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif",
+  };
+
   // ============================================================================
-  // 12. TELA DE CARREGAMENTO INICIAL
+  // 12. TELA DE CARREGAMENTO INICIAL (ESTILO EDITORIAL)
   // ============================================================================
 
   if (loadingFirebase) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-red-950 via-red-900 to-emerald-950 flex flex-col items-center justify-center p-6 text-white text-center">
-        <ChristmasTreeSVG className="w-20 h-20 animate-bounce mb-4" />
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-amber-300">
-          Carregando Amigo Secreto da Família...
-        </h1>
-        <p className="text-red-100 text-base mt-2">
-          Preparando ambiente seguro de Natal
-        </p>
+      <div
+        style={fontSansStyle}
+        className="min-h-screen bg-[#FAF8F5] text-[#181816] flex flex-col items-center justify-center p-8"
+      >
+        <div className="max-w-md w-full border border-[#DCD6CD] bg-[#FAF8F5] p-10 text-center space-y-6">
+          <ArchitecturalLogoMark className="w-10 h-10 mx-auto text-[#181816]" />
+          <div className="w-8 h-[1px] bg-[#8C6D53] mx-auto" />
+          <h1
+            style={fontSerifStyle}
+            className="text-3xl font-semibold tracking-tight text-[#181816]"
+          >
+            Amigo Secreto da Família
+          </h1>
+          <p className="text-xs uppercase tracking-[0.25em] text-[#5C5852]">
+            Sincronizando Arquivo Editorial...
+          </p>
+        </div>
       </div>
     );
   }
 
   // ============================================================================
-  // 13. AMBIENTE 2: PÁGINA DIRETA DO PARTICIPANTE (SEM SENHA + DICAS EM TEMPO REAL)
+  // 13. AMBIENTE 2: PÁGINA EXCLUSIVA DO PARTICIPANTE (ACESSO DIRETO + DICAS)
   // ============================================================================
 
   if (activeParticipantToken) {
@@ -1881,229 +1882,306 @@ Boas festas! 🎄✨`;
     const iHaveFilledMyHints = hasFilledGiftHints(myOwnParticipantDoc);
 
     return (
-      <div className="min-h-screen bg-gradient-to-b from-red-950 via-red-900 to-emerald-950 text-white flex flex-col justify-between p-4 sm:p-8 font-sans">
-        {/* Toast Notification para quando o participante salva suas dicas */}
+      <div
+        style={fontSansStyle}
+        className="min-h-screen bg-[#FAF8F5] text-[#181816] flex flex-col justify-between selection:bg-[#2C4035] selection:text-[#FAF8F5]"
+      >
+        {/* Notificação Toast Editorial */}
         {toast && (
-          <div className="fixed top-5 right-5 z-50 max-w-md animate-bounce">
+          <div className="fixed top-6 right-6 z-50 max-w-md">
             <div
-              className={`flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl border ${
+              className={`flex items-center gap-3 px-6 py-4 border ${
                 toast.type === 'error'
-                  ? 'bg-red-900 text-white border-red-400'
-                  : 'bg-emerald-900 text-white border-amber-400'
+                  ? 'bg-[#8E3B36] text-[#FAF8F5] border-[#181816]'
+                  : 'bg-[#181816] text-[#FAF8F5] border-[#2C4035]'
               }`}
             >
-              <Sparkles className="w-5 h-5 text-amber-300 shrink-0" />
-              <p className="text-base font-bold">{toast.message}</p>
+              <span className="w-2 h-2 bg-[#8C6D53] shrink-0" />
+              <p className="text-sm font-medium tracking-wide">
+                {toast.message}
+              </p>
             </div>
           </div>
         )}
 
-        {/* Barra superior caso o Administrador esteja apenas testando a tela */}
+        {/* Faixa superior caso o Administrador esteja testando o link */}
         {isSimulatingParticipant && (
-          <div className="max-w-2xl w-full mx-auto mb-4 bg-amber-400 text-red-950 px-4 py-3 rounded-2xl shadow-lg flex items-center justify-between font-bold text-xs sm:text-sm">
-            <span>
-              👁️ Simulação Admin (Nome sorteado oculto para não dar spoiler)
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveParticipantToken(null);
-                setIsSimulatingParticipant(false);
-                setDecryptedResult(null);
-              }}
-              className="px-3 py-1.5 rounded-xl bg-red-950 text-amber-300 hover:bg-red-900 transition cursor-pointer"
-            >
-              Voltar ao Painel Admin
-            </button>
+          <div className="border-b border-[#DCD6CD] bg-[#F3EFEA] px-4 sm:px-8 py-3">
+            <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2 text-[#181816]">
+                <span className="px-2 py-0.5 bg-[#8C6D53] text-[#FAF8F5] uppercase tracking-widest font-semibold text-[10px]">
+                  Modo Teste
+                </span>
+                <span className="text-[#5C5852]">
+                  Visualizando link de{' '}
+                  <strong className="text-[#181816]">
+                    {currentParticipantTokenDoc?.participantName}
+                  </strong>{' '}
+                  (Nome sorteado oculto para preservar o sigilo)
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveParticipantToken(null);
+                  setIsSimulatingParticipant(false);
+                  setDecryptedResult(null);
+                }}
+                className="px-4 py-1.5 border border-[#181816] bg-[#181816] text-[#FAF8F5] hover:bg-[#2C4035] uppercase tracking-[0.15em] text-[10px] font-semibold transition cursor-pointer"
+              >
+                ← Voltar ao Painel Admin
+              </button>
+            </div>
           </div>
         )}
 
-        <div className="max-w-2xl w-full mx-auto my-auto space-y-6">
-          {/* Cabeçalho Natalino */}
-          <div className="text-center">
-            <div className="inline-flex items-center justify-center p-3.5 rounded-3xl bg-white/10 border-2 border-amber-400/50 shadow-xl mb-3">
-              <ChristmasTreeSVG className="w-12 h-12" />
+        {/* Barra de Topo Editorial */}
+        <header className="border-b border-[#DCD6CD] px-6 sm:px-12 py-6">
+          <div className="max-w-5xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-3.5">
+              <ArchitecturalLogoMark className="w-8 h-8 text-[#181816]" />
+              <div>
+                <span className="block text-[10px] uppercase tracking-[0.25em] text-[#8C6D53] font-semibold">
+                  Edição Especial de Natal
+                </span>
+                <span
+                  style={fontSerifStyle}
+                  className="text-xl font-semibold tracking-tight text-[#181816]"
+                >
+                  {eventName}
+                </span>
+              </div>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-amber-300 tracking-tight">
-              {eventName}
-            </h1>
-          </div>
 
+            {systemConfig?.suggestedValue && (
+              <div className="hidden sm:block text-right">
+                <span className="block text-[10px] uppercase tracking-[0.2em] text-[#5C5852]">
+                  Valor Sugerido
+                </span>
+                <span className="text-xs font-semibold text-[#181816]">
+                  {systemConfig.suggestedValue}
+                </span>
+              </div>
+            )}
+          </div>
+        </header>
+
+        {/* Conteúdo Principal do Participante */}
+        <main className="flex-1 max-w-5xl w-full mx-auto px-6 sm:px-12 py-10 sm:py-16">
           {!currentParticipantTokenDoc ? (
-            <div className="bg-white text-stone-900 rounded-3xl p-6 sm:p-10 shadow-2xl border-4 border-amber-400 text-center space-y-5">
-              <AlertTriangle className="w-16 h-16 text-red-700 mx-auto" />
-              <h2 className="text-2xl font-extrabold text-stone-900">
-                Link de Acesso Não Encontrado
+            <div className="border border-[#DCD6CD] bg-[#F3EFEA]/50 p-8 sm:p-14 text-center space-y-5 max-w-xl mx-auto">
+              <span className="text-xs uppercase tracking-[0.25em] text-[#8E3B36] font-semibold">
+                00. Link Não Localizado
+              </span>
+              <h2
+                style={fontSerifStyle}
+                className="text-3xl sm:text-4xl font-semibold text-[#181816]"
+              >
+                Convite Individual Expirado ou Inválido
               </h2>
-              <p className="text-base sm:text-lg text-stone-600 leading-relaxed">
-                Este link não está ativo ou um novo sorteio foi realizado. Por
-                favor, verifique a última mensagem enviada no seu WhatsApp!
+              <p className="text-base text-[#5C5852] leading-relaxed">
+                Este endereço não corresponde a um sorteio ativo. Verifique a
+                última mensagem enviada no seu WhatsApp pelo organizador da
+                família.
               </p>
             </div>
           ) : isDecryptingLink ? (
-            <div className="bg-white/10 backdrop-blur-md rounded-3xl p-8 sm:p-12 border-4 border-amber-400 text-center space-y-6 shadow-2xl">
-              <FestiveGiftBoxSVG
-                isOpening={true}
-                className="w-36 h-36 mx-auto"
-              />
-              <h2 className="text-2xl sm:text-3xl font-black text-amber-300 animate-pulse">
-                ABRINDO SEU PRESENTE...
+            <div className="border border-[#DCD6CD] bg-[#FAF8F5] p-12 sm:p-16 text-center space-y-6 max-w-xl mx-auto">
+              <div className="w-10 h-[1px] bg-[#8C6D53] mx-auto animate-pulse" />
+              <h2
+                style={fontSerifStyle}
+                className="text-3xl sm:text-4xl font-semibold text-[#181816]"
+              >
+                Revelando seu Amigo Secreto...
               </h2>
             </div>
           ) : (
-            <div className="bg-white text-stone-900 rounded-3xl p-6 sm:p-10 shadow-2xl border-4 border-amber-400 space-y-8">
-              {/* BLOCO 1: SAUDAÇÃO E NOME DE QUEM A PESSOA TIROU */}
-              <div className="text-center space-y-3">
-                <span className="inline-block px-5 py-2 rounded-full bg-emerald-100 text-emerald-950 font-black text-base sm:text-lg">
-                  👋 Olá, {currentParticipantTokenDoc.participantName}!
-                </span>
+            <div className="space-y-12 sm:space-y-16">
+              {/* SEÇÃO 01: REVELAÇÃO IMEDIATA DE QUEM A PESSOA TIROU */}
+              <section className="relative">
+                {/* Moldura Geométrica Deslocada (Swiss Editorial Frame) */}
+                <div className="hidden sm:block absolute -top-3 -left-3 w-full h-full border border-[#8C6D53]/40 pointer-events-none" />
 
-                <div className="pt-2">
-                  <FestiveGiftBoxSVG
-                    isOpened={true}
-                    className="w-24 h-24 mx-auto"
-                  />
-                  <p className="text-base sm:text-xl font-black uppercase tracking-wider text-red-800 mt-2">
-                    🎉 VOCÊ TIROU NO AMIGO SECRETO: 🎉
-                  </p>
-                </div>
+                <div className="relative border border-[#181816] bg-[#FAF8F5] p-6 sm:p-12">
+                  <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-[#DCD6CD]">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-bold uppercase tracking-[0.25em] text-[#8E3B36]">
+                        01. Revelação Exclusiva
+                      </span>
+                      <span className="w-6 h-[1px] bg-[#DCD6CD]" />
+                      <span className="text-xs uppercase tracking-[0.15em] text-[#5C5852]">
+                        Acesso Direto Verificado
+                      </span>
+                    </div>
 
-                <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-red-900 via-red-800 to-emerald-900 text-white shadow-xl border-4 border-amber-400">
-                  <h2 className="text-3xl sm:text-5xl font-black text-amber-300 tracking-tight break-words">
-                    {isSimulatingParticipant
-                      ? '🔒 [Nome Oculto no Teste]'
-                      : drawnName}
-                  </h2>
-                </div>
-
-                <p className="text-sm sm:text-base text-stone-600 font-medium">
-                  🤫 Guarde segredo! Sempre que quiser consultar novamente, é só
-                  clicar no link do seu WhatsApp.
-                </p>
-              </div>
-
-              {/* BLOCO 2: BOTÃO GIGANTE "DAR DICA DE PRESENTE" (PARA O PRÓPRIO PARTICIPANTE PREENCHER) */}
-              <div className="p-5 sm:p-6 rounded-3xl bg-amber-50 border-2 border-amber-400 space-y-3 text-center shadow-inner">
-                <span className="inline-block px-3 py-1 rounded-full bg-amber-200 text-amber-950 font-black text-xs sm:text-sm uppercase">
-                  {iHaveFilledMyHints
-                    ? '✅ Suas dicas já estão salvas!'
-                    : '📢 Ajude quem tirou você!'}
-                </span>
-                <h3 className="text-xl sm:text-2xl font-black text-stone-900">
-                  O que VOCÊ gostaria de ganhar,{' '}
-                  {
-                    String(
-                      currentParticipantTokenDoc.participantName || ''
-                    ).split(' ')[0]
-                  }
-                  ?
-                </h3>
-                <p className="text-sm sm:text-base text-stone-700">
-                  Clique no botão abaixo para escrever suas dicas de presente e
-                  tamanhos de roupa. A pessoa que tirou você verá na mesma hora!
-                </p>
-
-                <button
-                  type="button"
-                  onClick={handleOpenMyGiftHintsModal}
-                  className="w-full py-5 px-6 rounded-2xl bg-gradient-to-r from-emerald-800 via-emerald-700 to-emerald-800 hover:from-emerald-700 hover:to-emerald-600 text-white font-black text-lg sm:text-xl shadow-xl border-2 border-amber-400 flex items-center justify-center gap-3 transition transform active:scale-95 cursor-pointer"
-                >
-                  <Gift className="w-7 h-7 text-amber-300 shrink-0" />
-                  <span>
-                    {iHaveFilledMyHints
-                      ? 'EDITAR MINHAS DICAS DE PRESENTE'
-                      : 'DAR DICA DE PRESENTE'}
-                  </span>
-                </button>
-              </div>
-
-              {/* BLOCO 3: DICAS E TAMANHOS DA PESSOA QUE ELE TIROU (ATUALIZADO EM TEMPO REAL!) */}
-              {!isSimulatingParticipant && (
-                <div className="space-y-4 pt-2 border-t-2 border-stone-200">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <h3 className="text-xl sm:text-2xl font-black text-stone-900 flex items-center gap-2">
-                      <Heart className="w-6 h-6 text-red-700 fill-red-700 shrink-0" />
-                      <span>Dicas de Presente de {drawnName}:</span>
-                    </h3>
-                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-100 px-3 py-1 rounded-full">
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      Atualiza sozinho em tempo real
+                    <span className="px-3 py-1 bg-[#F3EFEA] border border-[#DCD6CD] text-xs font-semibold text-[#181816]">
+                      Participante: {currentParticipantTokenDoc.participantName}
                     </span>
                   </div>
 
-                  {!drawnHasHints ? (
-                    <div className="p-6 rounded-3xl bg-stone-100 border-2 border-dashed border-stone-300 text-center space-y-2">
-                      <Clock className="w-10 h-10 text-amber-600 mx-auto" />
-                      <h4 className="text-lg sm:text-xl font-black text-stone-800">
-                        {drawnName} ainda não preencheu as dicas de presente!
+                  <div className="py-8 sm:py-12 text-center sm:text-left grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+                    <div className="lg:col-span-4 space-y-3">
+                      <p className="text-sm sm:text-base uppercase tracking-[0.2em] text-[#5C5852] font-medium">
+                        Olá,{' '}
+                        <strong className="text-[#181816]">
+                          {
+                            String(
+                              currentParticipantTokenDoc.participantName || ''
+                            ).split(' ')[0]
+                          }
+                        </strong>
+                        .
+                      </p>
+                      <h2
+                        style={fontSerifStyle}
+                        className="text-3xl sm:text-4xl font-normal italic text-[#5C5852] leading-tight"
+                      >
+                        Neste Natal, a pessoa que você tirou no Amigo Secreto é:
+                      </h2>
+                      <div className="w-12 h-[2px] bg-[#2C4035] mx-auto sm:mx-0 pt-0.5" />
+                    </div>
+
+                    <div className="lg:col-span-8 border border-[#DCD6CD] bg-[#F3EFEA] p-8 sm:p-12 relative">
+                      <span className="block text-[11px] uppercase tracking-[0.25em] text-[#8C6D53] font-semibold mb-2">
+                        Seu Amigo Secreto Sorteado
+                      </span>
+                      <div
+                        style={fontSerifStyle}
+                        className="text-4xl sm:text-6xl font-bold text-[#2C4035] tracking-tight break-words leading-none"
+                      >
+                        {isSimulatingParticipant
+                          ? '[ Nome Oculto no Modo Teste ]'
+                          : drawnName}
+                      </div>
+                      <p className="text-xs sm:text-sm text-[#5C5852] mt-5 pt-4 border-t border-[#DCD6CD]">
+                        Guarde segredo. Você pode abrir este mesmo link no seu
+                        WhatsApp quantas vezes quiser para consultar o nome e as
+                        dicas de presente abaixo.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* SEÇÃO 02 & 03: GRID ASSIMÉTRICO (DICAS DE QUEM VOCÊ TIROU + BOTÃO DAR DICA DE PRESENTE) */}
+              <section className="grid grid-cols-1 lg:grid-cols-12 gap-8 sm:gap-10 items-start">
+                {/* COLUNA ESQUERDA (7 COLUNAS): DICAS DE PRESENTE DA PESSOA SORTEADA */}
+                <div className="lg:col-span-7 border border-[#DCD6CD] bg-[#FAF8F5] p-6 sm:p-10 space-y-6">
+                  <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-[#DCD6CD]">
+                    <div>
+                      <span className="block text-[11px] uppercase tracking-[0.25em] text-[#2C4035] font-bold">
+                        02. Lista de Preferências
+                      </span>
+                      <h3
+                        style={fontSerifStyle}
+                        className="text-2xl sm:text-3xl font-semibold text-[#181816] mt-1"
+                      >
+                        O que {isSimulatingParticipant ? 'seu sorteado' : drawnName}{' '}
+                        gostaria de ganhar
+                      </h3>
+                    </div>
+                    <span className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-[#2C4035] bg-[#F3EFEA] px-3 py-1 border border-[#DCD6CD]">
+                      <RefreshCw className="w-3 h-3" />
+                      Tempo Real
+                    </span>
+                  </div>
+
+                  {isSimulatingParticipant ? (
+                    <div className="p-8 bg-[#F3EFEA] border border-[#DCD6CD] text-sm text-[#5C5852] leading-relaxed">
+                      No modo de teste administrativo, as dicas da pessoa
+                      sorteada ficam ocultas para que você não descubra quem{' '}
+                      <strong>
+                        {currentParticipantTokenDoc.participantName}
+                      </strong>{' '}
+                      tirou.
+                    </div>
+                  ) : !drawnHasHints ? (
+                    <div className="p-8 bg-[#F3EFEA]/60 border border-dashed border-[#8C6D53] space-y-3">
+                      <span className="inline-block text-xs uppercase tracking-[0.2em] text-[#8C6D53] font-semibold">
+                        Aguardando Preenchimento
+                      </span>
+                      <h4
+                        style={fontSerifStyle}
+                        className="text-2xl font-semibold text-[#181816]"
+                      >
+                        {drawnName} ainda não cadastrou dicas de presente.
                       </h4>
-                      <p className="text-sm sm:text-base text-stone-600 leading-relaxed">
-                        Não se preocupe: assim que {drawnName} clicar em{' '}
-                        <strong>"Dar Dica de Presente"</strong> lá no celular
-                        dele(a), as informações aparecerão aqui para você
-                        automaticamente!
+                      <p className="text-sm sm:text-base text-[#5C5852] leading-relaxed">
+                        Assim que <strong>{drawnName}</strong> abrir o link
+                        dele(a) e clicar no botão{' '}
+                        <strong>"Dar Dica de Presente"</strong>, os desejos e
+                        tamanhos aparecerão automaticamente aqui para você.
                       </p>
                     </div>
                   ) : (
-                    <div className="space-y-4">
-                      <div className="p-5 rounded-2xl bg-emerald-50 border-2 border-emerald-300 space-y-1.5">
-                        <span className="text-sm sm:text-base font-black uppercase text-emerald-950 flex items-center gap-2">
-                          <Heart className="w-5 h-5 text-emerald-700 shrink-0" />
-                          O que {drawnName} gostaria de ganhar:
+                    <div className="space-y-6">
+                      {/* Desejo Principal */}
+                      <div className="p-6 bg-[#F3EFEA] border-l-2 border-[#2C4035] space-y-2">
+                        <span className="text-xs uppercase tracking-[0.2em] text-[#2C4035] font-bold block">
+                          Sugestões do que gostaria de ganhar
                         </span>
-                        <p className="text-lg sm:text-2xl font-black text-stone-900 leading-relaxed">
+                        <p className="text-xl sm:text-2xl font-semibold text-[#181816] leading-relaxed">
                           {drawnPersonLatestData?.wantToGet ||
-                            'Não informou preferência específica'}
+                            'Não especificou preferência'}
                         </p>
                       </div>
 
+                      {/* O que evita / não gostaria */}
                       {drawnPersonLatestData?.dontWantToGet && (
-                        <div className="p-5 rounded-2xl bg-red-50 border-2 border-red-200 space-y-1.5">
-                          <span className="text-sm sm:text-base font-black uppercase text-red-950 flex items-center gap-2">
-                            <ThumbsDown className="w-5 h-5 text-red-700 shrink-0" />
-                            O que NÃO gostaria de ganhar:
+                        <div className="p-5 bg-[#FAF8F5] border border-[#DCD6CD] border-l-2 border-l-[#8E3B36] space-y-1">
+                          <span className="text-xs uppercase tracking-[0.2em] text-[#8E3B36] font-bold block">
+                            Prefere evitar / Não gostaria de ganhar
                           </span>
-                          <p className="text-lg sm:text-xl font-bold text-stone-900 leading-relaxed">
+                          <p className="text-base sm:text-lg font-medium text-[#181816]">
                             {drawnPersonLatestData.dontWantToGet}
                           </p>
                         </div>
                       )}
 
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div className="p-4 rounded-2xl bg-stone-100 border-2 border-stone-300 text-center">
-                          <span className="text-sm font-bold text-stone-600 block">
-                            👕 Camisa / Blusa
+                      {/* Grade de Medidas e Tamanhos */}
+                      <div className="grid grid-cols-3 border border-[#DCD6CD] divide-x divide-[#DCD6CD] bg-[#FAF8F5]">
+                        <div className="p-4 text-center">
+                          <span className="text-[11px] uppercase tracking-[0.15em] text-[#5C5852] block">
+                            Camisa / Blusa
                           </span>
-                          <strong className="text-2xl font-black text-stone-900 block mt-1">
-                            {drawnPersonLatestData?.shirtSize || '-'}
+                          <strong
+                            style={fontSerifStyle}
+                            className="text-2xl sm:text-3xl font-bold text-[#181816] block mt-1"
+                          >
+                            {drawnPersonLatestData?.shirtSize || '—'}
                           </strong>
                         </div>
-
-                        <div className="p-4 rounded-2xl bg-stone-100 border-2 border-stone-300 text-center">
-                          <span className="text-sm font-bold text-stone-600 block">
-                            👖 Calça
+                        <div className="p-4 text-center">
+                          <span className="text-[11px] uppercase tracking-[0.15em] text-[#5C5852] block">
+                            Calça
                           </span>
-                          <strong className="text-2xl font-black text-stone-900 block mt-1">
-                            {drawnPersonLatestData?.pantsSize || '-'}
+                          <strong
+                            style={fontSerifStyle}
+                            className="text-2xl sm:text-3xl font-bold text-[#181816] block mt-1"
+                          >
+                            {drawnPersonLatestData?.pantsSize || '—'}
                           </strong>
                         </div>
-
-                        <div className="p-4 rounded-2xl bg-stone-100 border-2 border-stone-300 text-center">
-                          <span className="text-sm font-bold text-stone-600 block">
-                            👟 Calçado
+                        <div className="p-4 text-center">
+                          <span className="text-[11px] uppercase tracking-[0.15em] text-[#5C5852] block">
+                            Calçado
                           </span>
-                          <strong className="text-2xl font-black text-stone-900 block mt-1">
-                            {drawnPersonLatestData?.shoeSize || '-'}
+                          <strong
+                            style={fontSerifStyle}
+                            className="text-2xl sm:text-3xl font-bold text-[#181816] block mt-1"
+                          >
+                            {drawnPersonLatestData?.shoeSize || '—'}
                           </strong>
                         </div>
                       </div>
 
+                      {/* Observações Adicionais */}
                       {drawnPersonLatestData?.observations && (
-                        <div className="p-5 rounded-2xl bg-amber-50 border-2 border-amber-200 space-y-1">
-                          <span className="text-sm sm:text-base font-black uppercase text-amber-950 block">
-                            ✨ Observações / Outras Preferências:
+                        <div className="p-5 bg-[#F3EFEA]/50 border border-[#DCD6CD] space-y-1">
+                          <span className="text-xs uppercase tracking-[0.2em] text-[#8C6D53] font-bold block">
+                            Observações, Cores ou Detalhes
                           </span>
-                          <p className="text-base sm:text-lg font-bold text-stone-800">
+                          <p className="text-base text-[#181816]">
                             {drawnPersonLatestData.observations}
                           </p>
                         </div>
@@ -2111,136 +2189,192 @@ Boas festas! 🎄✨`;
                     </div>
                   )}
                 </div>
-              )}
+
+                {/* COLUNA DIREITA (5 COLUNAS): AUTOATENDIMENTO "DAR DICA DE PRESENTE" */}
+                <div className="lg:col-span-5 border border-[#181816] bg-[#F3EFEA] p-6 sm:p-10 space-y-6">
+                  <div className="pb-4 border-b border-[#DCD6CD]">
+                    <span className="block text-[11px] uppercase tracking-[0.25em] text-[#8C6D53] font-bold">
+                      03. Suas Próprias Dicas
+                    </span>
+                    <h3
+                      style={fontSerifStyle}
+                      className="text-2xl sm:text-3xl font-semibold text-[#181816] mt-1"
+                    >
+                      Ajude quem tirou você
+                    </h3>
+                  </div>
+
+                  <p className="text-sm sm:text-base text-[#5C5852] leading-relaxed">
+                    Escreva abaixo o que <strong>você</strong> gostaria de
+                    ganhar e seus tamanhos de roupa ou calçado. A pessoa que
+                    tirou você verá suas dicas atualizadas na mesma hora!
+                  </p>
+
+                  {iHaveFilledMyHints && (
+                    <div className="p-4 bg-[#FAF8F5] border border-[#DCD6CD] text-xs space-y-1.5 text-[#5C5852]">
+                      <span className="text-[10px] uppercase tracking-[0.2em] text-[#2C4035] font-bold block">
+                        ✓ Suas dicas atuais registradas:
+                      </span>
+                      {myOwnParticipantDoc?.wantToGet && (
+                        <p className="text-[#181816] font-medium">
+                          Desejo: {myOwnParticipantDoc.wantToGet}
+                        </p>
+                      )}
+                      <p>
+                        Medidas: Camisa {myOwnParticipantDoc?.shirtSize || '—'}{' '}
+                        • Calça {myOwnParticipantDoc?.pantsSize || '—'} •
+                        Calçado {myOwnParticipantDoc?.shoeSize || '—'}
+                      </p>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleOpenMyGiftHintsModal}
+                    className="w-full py-5 px-6 bg-[#2C4035] hover:bg-[#181816] text-[#FAF8F5] border border-[#181816] uppercase tracking-[0.2em] text-xs sm:text-sm font-bold flex items-center justify-between transition cursor-pointer"
+                  >
+                    <span className="flex items-center gap-3">
+                      <Gift className="w-5 h-5 text-[#8C6D53]" />
+                      {iHaveFilledMyHints
+                        ? 'EDITAR MINHAS DICAS DE PRESENTE'
+                        : 'DAR DICA DE PRESENTE'}
+                    </span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </section>
             </div>
           )}
-        </div>
+        </main>
 
-        {/* MODAL PARA O PARTICIPANTE PREENCHER/ATUALIZAR SUAS PRÓPRIAS DICAS DE PRESENTE */}
+        {/* MODAL PARA O PARTICIPANTE PREENCHER / ATUALIZAR SUAS PRÓPRIAS DICAS */}
         {myHintsModalOpen && (
-          <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-            <div className="bg-white text-stone-900 rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border-4 border-amber-400 space-y-5 my-8">
-              <div className="flex items-center justify-between pb-3 border-b-2 border-stone-200">
+          <div className="fixed inset-0 z-50 bg-[#181816]/60 backdrop-blur-[2px] flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-[#FAF8F5] text-[#181816] border border-[#181816] max-w-xl w-full p-6 sm:p-10 space-y-6 my-8 shadow-2xl">
+              <div className="flex items-start justify-between pb-4 border-b border-[#DCD6CD]">
                 <div>
-                  <span className="text-xs font-black uppercase text-emerald-800">
-                    Suas Preferências de Presente
+                  <span className="text-[11px] uppercase tracking-[0.25em] text-[#8C6D53] font-bold">
+                    Preferências Pessoais •{' '}
+                    {currentParticipantTokenDoc?.participantName}
                   </span>
-                  <h3 className="text-2xl font-black text-stone-900">
-                    🎁 Dar Dica de Presente
+                  <h3
+                    style={fontSerifStyle}
+                    className="text-3xl font-semibold text-[#181816] mt-1"
+                  >
+                    Dar Dica de Presente
                   </h3>
                 </div>
                 <button
                   type="button"
                   onClick={() => setMyHintsModalOpen(false)}
-                  className="w-10 h-10 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-700 font-black text-lg cursor-pointer"
+                  className="w-9 h-9 border border-[#DCD6CD] hover:border-[#181816] text-sm font-semibold cursor-pointer"
                 >
                   ✕
                 </button>
               </div>
 
-              <p className="text-sm sm:text-base text-stone-600 font-medium">
-                Preencha abaixo o que você gostaria de ganhar. A pessoa que
-                tirou você verá essas dicas imediatamente (sem descobrir quem
-                você tirou)!
+              <p className="text-sm text-[#5C5852] leading-relaxed">
+                Preencha os campos que desejar. Assim que você salvar, a pessoa
+                que tirou você no sorteio verá essas informações atualizadas.
               </p>
 
-              <form onSubmit={handleSaveMyGiftHints} className="space-y-4">
+              <form onSubmit={handleSaveMyGiftHints} className="space-y-5">
                 <div>
-                  <label className="block text-sm sm:text-base font-black text-emerald-950 mb-1.5">
-                    🎁 O que você GOSTARIA de ganhar?
+                  <label className="block text-xs uppercase tracking-[0.18em] font-bold text-[#2C4035] mb-2">
+                    O que você gostaria de ganhar?
                   </label>
                   <textarea
                     rows={3}
                     value={myWant}
                     onChange={(e) => setMyWant(e.target.value)}
-                    placeholder="Ex: Perfume, camisa, bolsa, livro, chocolate, utensílio..."
-                    className="w-full px-4 py-3 rounded-2xl border-2 border-stone-300 focus:border-emerald-700 text-base sm:text-lg font-semibold outline-none"
+                    placeholder="Ex: Perfume, livro, camisa, bolsa, chocolates, itens de casa..."
+                    className="w-full px-4 py-3 bg-[#F3EFEA] border border-[#DCD6CD] focus:border-[#181816] text-base text-[#181816] outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm sm:text-base font-black text-red-900 mb-1.5">
-                    🚫 Tem algo que você NÃO gostaria de ganhar? (Opcional)
+                  <label className="block text-xs uppercase tracking-[0.18em] font-bold text-[#8E3B36] mb-2">
+                    O que você NÃO gostaria de ganhar? (Opcional)
                   </label>
                   <input
                     type="text"
                     value={myDontWant}
                     onChange={(e) => setMyDontWant(e.target.value)}
-                    placeholder="Ex: Roupas escuras, perfumes fortes..."
-                    className="w-full px-4 py-3 rounded-2xl border-2 border-stone-300 focus:border-red-700 text-base sm:text-lg font-semibold outline-none"
+                    placeholder="Ex: Perfumes doces, roupas escuras..."
+                    className="w-full px-4 py-3 bg-[#F3EFEA] border border-[#DCD6CD] focus:border-[#181816] text-base text-[#181816] outline-none"
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm font-black text-stone-700 mb-1">
-                      👕 Camisa / Blusa
+                    <label className="block text-[11px] uppercase tracking-[0.15em] font-bold text-[#5C5852] mb-1.5">
+                      Tamanho Camisa / Blusa
                     </label>
                     <input
                       type="text"
                       value={myShirt}
                       onChange={(e) => setMyShirt(e.target.value)}
                       placeholder="Ex: P, M, G, GG"
-                      className="w-full px-4 py-3 rounded-2xl border-2 border-stone-300 text-base font-bold outline-none"
+                      className="w-full px-4 py-3 bg-[#F3EFEA] border border-[#DCD6CD] focus:border-[#181816] text-base font-semibold outline-none"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-black text-stone-700 mb-1">
-                      👖 Tamanho Calça
+                    <label className="block text-[11px] uppercase tracking-[0.15em] font-bold text-[#5C5852] mb-1.5">
+                      Tamanho Calça
                     </label>
                     <input
                       type="text"
                       value={myPants}
                       onChange={(e) => setMyPants(e.target.value)}
                       placeholder="Ex: 38, 42, M"
-                      className="w-full px-4 py-3 rounded-2xl border-2 border-stone-300 text-base font-bold outline-none"
+                      className="w-full px-4 py-3 bg-[#F3EFEA] border border-[#DCD6CD] focus:border-[#181816] text-base font-semibold outline-none"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-black text-stone-700 mb-1">
-                      👟 Calçado
+                    <label className="block text-[11px] uppercase tracking-[0.15em] font-bold text-[#5C5852] mb-1.5">
+                      Numeração Calçado
                     </label>
                     <input
                       type="text"
                       value={myShoe}
                       onChange={(e) => setMyShoe(e.target.value)}
                       placeholder="Ex: 36, 40"
-                      className="w-full px-4 py-3 rounded-2xl border-2 border-stone-300 text-base font-bold outline-none"
+                      className="w-full px-4 py-3 bg-[#F3EFEA] border border-[#DCD6CD] focus:border-[#181816] text-base font-semibold outline-none"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm sm:text-base font-black text-stone-700 mb-1">
-                    ✨ Outras observações ou cores favoritas (Opcional)
+                  <label className="block text-xs uppercase tracking-[0.18em] font-bold text-[#5C5852] mb-2">
+                    Outras observações ou cores preferidas (Opcional)
                   </label>
                   <input
                     type="text"
                     value={myNotes}
                     onChange={(e) => setMyNotes(e.target.value)}
-                    placeholder="Ex: Gosto de cores claras, prata/dourado..."
-                    className="w-full px-4 py-3 rounded-2xl border-2 border-stone-300 text-base font-semibold outline-none"
+                    placeholder="Ex: Prefiro tons neutros, dourado, livros de romance..."
+                    className="w-full px-4 py-3 bg-[#F3EFEA] border border-[#DCD6CD] focus:border-[#181816] text-base outline-none"
                   />
                 </div>
 
-                <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t-2 border-stone-200">
+                <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t border-[#DCD6CD]">
                   <button
                     type="button"
                     onClick={() => setMyHintsModalOpen(false)}
-                    className="py-3.5 px-6 rounded-2xl border-2 border-stone-300 font-black text-base text-stone-700 cursor-pointer"
+                    className="py-3.5 px-6 border border-[#DCD6CD] hover:border-[#181816] text-xs uppercase tracking-[0.2em] font-bold text-[#5C5852] cursor-pointer"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
                     disabled={savingMyHints}
-                    className="py-4 px-8 rounded-2xl bg-emerald-800 hover:bg-emerald-700 text-white font-black text-lg shadow-xl border-2 border-amber-400 cursor-pointer"
+                    className="py-4 px-8 bg-[#2C4035] hover:bg-[#181816] text-[#FAF8F5] text-xs uppercase tracking-[0.2em] font-bold transition cursor-pointer"
                   >
                     {savingMyHints
-                      ? 'SALVANDO...'
-                      : '✅ SALVAR MINHAS DICAS'}
+                      ? 'Salvando...'
+                      : 'Salvar Minhas Dicas de Presente'}
                   </button>
                 </div>
               </form>
@@ -2248,52 +2382,76 @@ Boas festas! 🎄✨`;
           </div>
         )}
 
-        <footer className="text-center text-xs sm:text-sm text-red-200/80 pt-8">
-          🎄 {eventName} • Link Exclusivo da Família
+        <footer className="border-t border-[#DCD6CD] px-6 sm:px-12 py-6 text-center text-xs uppercase tracking-[0.2em] text-[#5C5852]">
+          {eventName} — Acesso Individual Criptografado
         </footer>
       </div>
     );
   }
 
   // ============================================================================
-  // 14. AMBIENTE 1 (PARTE A): TELA DE LOGIN EXCLUSIVO DO ADMINISTRADOR
+  // 14. AMBIENTE 1 (PARTE A): LOGIN EDITORIAL DO ADMINISTRADOR ÚNICO
   // ============================================================================
 
   if (!isAdminAuthenticated) {
     const isFirstTimeSetup = !systemConfig || !systemConfig.adminPasswordHash;
 
     return (
-      <div className="min-h-screen bg-gradient-to-br from-red-950 via-red-900 to-emerald-950 flex flex-col justify-between p-4 sm:p-8 font-sans text-white">
+      <div
+        style={fontSansStyle}
+        className="min-h-screen bg-[#FAF8F5] text-[#181816] flex flex-col justify-between selection:bg-[#2C4035] selection:text-[#FAF8F5]"
+      >
         {toast && (
-          <div className="fixed top-5 right-5 z-50 max-w-md animate-bounce">
+          <div className="fixed top-6 right-6 z-50 max-w-md">
             <div
-              className={`flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl border ${
+              className={`flex items-center gap-3 px-6 py-4 border ${
                 toast.type === 'error'
-                  ? 'bg-red-900 text-white border-red-400'
-                  : 'bg-emerald-900 text-white border-amber-400'
+                  ? 'bg-[#8E3B36] text-[#FAF8F5] border-[#181816]'
+                  : 'bg-[#181816] text-[#FAF8F5] border-[#2C4035]'
               }`}
             >
-              <Sparkles className="w-5 h-5 text-amber-300 shrink-0" />
-              <p className="text-sm font-semibold">{toast.message}</p>
+              <span className="w-2 h-2 bg-[#8C6D53] shrink-0" />
+              <p className="text-sm font-medium">{toast.message}</p>
             </div>
           </div>
         )}
 
-        <div className="max-w-md w-full mx-auto my-auto">
-          <div className="bg-white text-stone-900 rounded-3xl shadow-2xl border-2 border-amber-400/60 overflow-hidden">
-            <div className="bg-gradient-to-r from-red-900 via-red-800 to-emerald-900 p-7 text-white text-center space-y-2">
-              <div className="w-16 h-16 rounded-2xl bg-white/10 border border-amber-400/40 flex items-center justify-center mx-auto mb-2">
-                <ChristmasTreeSVG className="w-10 h-10" />
-              </div>
-              <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-amber-400/20 text-amber-300 text-xs font-bold uppercase tracking-wider">
-                <Shield className="w-3.5 h-3.5" />
-                Acesso Exclusivo do Organizador
+        {/* Header Editorial Minimalista */}
+        <header className="border-b border-[#DCD6CD] px-6 sm:px-12 py-6">
+          <div className="max-w-6xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <ArchitecturalLogoMark className="w-7 h-7 text-[#181816]" />
+              <span className="text-xs uppercase tracking-[0.25em] font-semibold text-[#181816]">
+                {eventName}
               </span>
-              <h1 className="text-2xl font-extrabold">{eventName}</h1>
-              <p className="text-xs text-red-100">
+            </div>
+            <span className="text-[11px] uppercase tracking-[0.25em] text-[#8C6D53] font-semibold">
+              Curadoria Familiar • 2026
+            </span>
+          </div>
+        </header>
+
+        {/* Composição Assimétrica Estilo Swiss / Interior Design Reference */}
+        <main className="flex-1 max-w-6xl w-full mx-auto px-6 sm:px-12 py-12 sm:py-20 grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+          {/* Coluna Esquerda: Título Editorial + Formulário */}
+          <div className="lg:col-span-6 space-y-8">
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <span className="w-8 h-[1px] bg-[#181816]" />
+                <span className="text-xs uppercase tracking-[0.25em] text-[#8E3B36] font-semibold">
+                  01. Administração Centralizada
+                </span>
+              </div>
+              <h1
+                style={fontSerifStyle}
+                className="text-4xl sm:text-6xl font-semibold tracking-tight text-[#181816] leading-[1.05]"
+              >
+                Amigo Secreto Familiar.
+              </h1>
+              <p className="text-sm text-[#5C5852] leading-relaxed max-w-md">
                 {isFirstTimeSetup
-                  ? 'Defina o usuário e a senha do Administrador Único do sistema'
-                  : 'Entre com suas credenciais administrativas para gerenciar o sorteio'}
+                  ? 'Configure a credencial do Administrador Único para gerenciar a lista de familiares, executar o sorteio e disparar os convites diretos no WhatsApp.'
+                  : 'Acesse o painel do organizador para gerenciar os participantes, realizar o sorteio com sigilo criptográfico e disparar os links individuais.'}
               </p>
             </div>
 
@@ -2301,11 +2459,11 @@ Boas festas! 🎄✨`;
               onSubmit={
                 isFirstTimeSetup ? handleSetupInitialAdmin : handleAdminLogin
               }
-              className="p-6 sm:p-8 space-y-5"
+              className="border border-[#DCD6CD] bg-[#F3EFEA]/60 p-6 sm:p-8 space-y-5 max-w-md"
             >
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1.5">
-                  Usuário do Administrador
+                <label className="block text-[11px] uppercase tracking-[0.2em] font-semibold text-[#181816] mb-2">
+                  Usuário Administrativo
                 </label>
                 <input
                   type="text"
@@ -2313,13 +2471,13 @@ Boas festas! 🎄✨`;
                   value={adminUserInput}
                   onChange={(e) => setAdminUserInput(e.target.value)}
                   placeholder="Ex: admin"
-                  className="w-full px-4 py-3 rounded-xl border border-stone-300 focus:border-red-800 outline-none text-sm"
+                  className="w-full px-4 py-3 bg-[#FAF8F5] border border-[#DCD6CD] focus:border-[#181816] outline-none text-sm"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1.5">
-                  Senha Administrativa
+                <label className="block text-[11px] uppercase tracking-[0.2em] font-semibold text-[#181816] mb-2">
+                  Senha de Acesso
                 </label>
                 <div className="relative">
                   <input
@@ -2327,13 +2485,13 @@ Boas festas! 🎄✨`;
                     required
                     value={adminPassInput}
                     onChange={(e) => setAdminPassInput(e.target.value)}
-                    placeholder="Digite sua senha"
-                    className="w-full px-4 py-3 rounded-xl border border-stone-300 focus:border-red-800 outline-none text-sm pr-11"
+                    placeholder="••••••••"
+                    className="w-full px-4 py-3 bg-[#FAF8F5] border border-[#DCD6CD] focus:border-[#181816] outline-none text-sm pr-11"
                   />
                   <button
                     type="button"
                     onClick={() => setShowAdminPass(!showAdminPass)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700"
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#5C5852] hover:text-[#181816]"
                   >
                     {showAdminPass ? (
                       <EyeOff className="w-4 h-4" />
@@ -2346,8 +2504,8 @@ Boas festas! 🎄✨`;
 
               {isFirstTimeSetup && (
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-stone-700 mb-1.5">
-                    Confirmar Senha Administrativa
+                  <label className="block text-[11px] uppercase tracking-[0.2em] font-semibold text-[#181816] mb-2">
+                    Confirmar Senha
                   </label>
                   <input
                     type="password"
@@ -2355,7 +2513,7 @@ Boas festas! 🎄✨`;
                     value={adminConfirmPassInput}
                     onChange={(e) => setAdminConfirmPassInput(e.target.value)}
                     placeholder="Repita a senha"
-                    className="w-full px-4 py-3 rounded-xl border border-stone-300 focus:border-red-800 outline-none text-sm"
+                    className="w-full px-4 py-3 bg-[#FAF8F5] border border-[#DCD6CD] focus:border-[#181816] outline-none text-sm"
                   />
                 </div>
               )}
@@ -2363,34 +2521,43 @@ Boas festas! 🎄✨`;
               <button
                 type="submit"
                 disabled={isBusy}
-                className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-red-800 to-emerald-900 hover:from-red-700 hover:to-emerald-800 text-white font-bold text-sm shadow-lg flex items-center justify-center gap-2 transition cursor-pointer"
+                className="w-full py-4 px-6 bg-[#181816] hover:bg-[#2C4035] text-[#FAF8F5] text-xs uppercase tracking-[0.22em] font-semibold flex items-center justify-between transition cursor-pointer"
               >
-                <LogIn className="w-4 h-4 text-amber-300" />
-                {isBusy
-                  ? 'Validando...'
-                  : isFirstTimeSetup
-                  ? 'Criar Administrador Único e Acessar'
-                  : 'Entrar no Painel Administrativo'}
+                <span>
+                  {isBusy
+                    ? 'Autenticando...'
+                    : isFirstTimeSetup
+                    ? 'Criar Credencial Admin'
+                    : 'Acessar Painel'}
+                </span>
+                <ArrowRight className="w-4 h-4" />
               </button>
-
-              <div className="p-3.5 rounded-xl bg-stone-50 border border-stone-200 text-xs text-stone-500 text-center">
-                🔒 Os familiares não precisam fazer login nem digitar senhas:
-                eles clicam no link enviado no WhatsApp e já veem seu Amigo
-                Secreto!
-              </div>
             </form>
           </div>
-        </div>
 
-        <footer className="text-center text-xs text-red-200/70">
-          Sistema Centralizado de Amigo Secreto • Acesso Direto Sem Senha
+          {/* Coluna Direita: Moldura Geométrica Arquitetônica Natalina */}
+          <div className="lg:col-span-6 flex flex-col items-center justify-center">
+            <div className="w-full max-w-md">
+              <MinimalBotanicalFrameSVG className="w-full h-auto" />
+              <div className="mt-4 flex items-center justify-between text-[11px] uppercase tracking-[0.2em] text-[#5C5852] px-2">
+                <span>01 / Experiência Sem Senhas</span>
+                <span>Acesso Direto via WhatsApp</span>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        <footer className="border-t border-[#DCD6CD] px-6 sm:px-12 py-5 text-xs text-[#5C5852] flex flex-wrap items-center justify-between gap-4 max-w-6xl w-full mx-auto">
+          <span>01. Privacidade Zero-Knowledge</span>
+          <span>02. Dicas em Tempo Real</span>
+          <span>03. Disparo Automático UltraMsg</span>
         </footer>
       </div>
     );
   }
 
   // ============================================================================
-  // 15. AMBIENTE 1 (PARTE B): PAINEL ADMINISTRATIVO CENTRALIZADO
+  // 15. AMBIENTE 1 (PARTE B): PAINEL ADMINISTRATIVO SWISS DESIGN
   // ============================================================================
 
   const sentCount = accessTokens.filter(
@@ -2402,170 +2569,166 @@ Boas festas! 🎄✨`;
   ).length;
 
   return (
-    <div className="min-h-screen bg-stone-50 text-stone-800 flex flex-col font-sans">
-      <div className="h-2 bg-gradient-to-r from-red-800 via-amber-400 to-emerald-800" />
-
+    <div
+      style={fontSansStyle}
+      className="min-h-screen bg-[#FAF8F5] text-[#181816] flex flex-col selection:bg-[#2C4035] selection:text-[#FAF8F5]"
+    >
+      {/* Toast Editorial */}
       {toast && (
-        <div className="fixed top-5 right-5 z-50 max-w-md animate-bounce">
+        <div className="fixed top-6 right-6 z-50 max-w-md">
           <div
-            className={`flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl border ${
+            className={`flex items-center gap-3 px-6 py-4 border ${
               toast.type === 'error'
-                ? 'bg-red-900 text-white border-red-400'
-                : 'bg-emerald-900 text-white border-amber-400'
+                ? 'bg-[#8E3B36] text-[#FAF8F5] border-[#181816]'
+                : 'bg-[#181816] text-[#FAF8F5] border-[#2C4035]'
             }`}
           >
-            {toast.type === 'error' ? (
-              <AlertTriangle className="w-5 h-5 text-amber-300 shrink-0" />
-            ) : (
-              <Sparkles className="w-5 h-5 text-amber-300 shrink-0" />
-            )}
+            <span className="w-2 h-2 bg-[#8C6D53] shrink-0" />
             <p className="text-sm font-medium">{toast.message}</p>
           </div>
         </div>
       )}
 
-      {/* Cabeçalho do Painel Administrativo */}
-      <header className="bg-gradient-to-r from-red-950 via-red-900 to-emerald-950 text-white shadow-xl sticky top-0 z-30 border-b border-amber-500/30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-white/10 border border-amber-400/40">
-              <ChristmasTreeSVG className="w-8 h-8" />
-            </div>
+      {/* Navegação Superior Discreta e Geométrica */}
+      <header className="border-b border-[#DCD6CD] bg-[#FAF8F5] sticky top-0 z-30">
+        <div className="max-w-7xl mx-auto px-6 sm:px-10 py-5 flex flex-wrap items-center justify-between gap-6">
+          <div className="flex items-center gap-3.5">
+            <ArchitecturalLogoMark className="w-7 h-7 text-[#181816]" />
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-extrabold text-lg sm:text-xl text-white">
-                  {eventName}
-                </h1>
-                <span className="px-2.5 py-0.5 text-[11px] font-bold bg-amber-400 text-red-950 rounded-full">
-                  Painel Admin
-                </span>
-              </div>
-              <p className="text-xs text-red-200">
-                Link Direto Sem Código • Dicas de Presentes Preenchidas pelos
-                Próprios Familiares
-              </p>
+              <span className="block text-[10px] uppercase tracking-[0.25em] text-[#8C6D53] font-semibold">
+                Painel do Organizador
+              </span>
+              <h1
+                style={fontSerifStyle}
+                className="text-xl sm:text-2xl font-semibold text-[#181816] leading-none"
+              >
+                {eventName}
+              </h1>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          <nav className="flex flex-wrap items-center gap-6 sm:gap-8 text-xs uppercase tracking-[0.2em]">
             <button
               type="button"
               onClick={() => setAdminTab('dashboard')}
-              className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer ${
+              className={`pb-1 transition cursor-pointer ${
                 adminTab === 'dashboard'
-                  ? 'bg-amber-400 text-red-950 shadow'
-                  : 'bg-white/10 text-white hover:bg-white/20'
+                  ? 'text-[#181816] font-bold border-b-2 border-[#8E3B36]'
+                  : 'text-[#5C5852] hover:text-[#181816]'
               }`}
             >
-              Participantes & Sorteio
+              01. Participantes ({participants.length})
             </button>
 
             <button
               type="button"
               onClick={() => setAdminTab('whatsapp_dispatch')}
-              className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition cursor-pointer ${
+              className={`pb-1 transition cursor-pointer ${
                 adminTab === 'whatsapp_dispatch'
-                  ? 'bg-amber-400 text-red-950 shadow'
-                  : 'bg-white/10 text-white hover:bg-white/20'
+                  ? 'text-[#181816] font-bold border-b-2 border-[#2C4035]'
+                  : 'text-[#5C5852] hover:text-[#181816]'
               }`}
             >
-              <Send className="w-3.5 h-3.5" />
-              Enviar WhatsApp ({sentCount}/{accessTokens.length})
+              02. WhatsApp & Links ({sentCount}/{accessTokens.length})
             </button>
 
             <button
               type="button"
               onClick={() => setAdminTab('settings')}
-              className={`p-2 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer ${
+              className={`pb-1 transition cursor-pointer ${
                 adminTab === 'settings'
-                  ? 'bg-amber-400 text-red-950 shadow'
-                  : 'bg-white/10 text-white hover:bg-white/20'
+                  ? 'text-[#181816] font-bold border-b-2 border-[#8C6D53]'
+                  : 'text-[#5C5852] hover:text-[#181816]'
               }`}
-              title="Configurações do Evento e API WhatsApp"
             >
-              <Settings className="w-4 h-4" />
+              03. Evento
             </button>
 
             <button
               type="button"
               onClick={() => setIsAdminAuthenticated(false)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-800/80 hover:bg-red-700 text-red-100 text-xs font-bold border border-red-500/30 transition cursor-pointer"
+              className="px-3.5 py-2 border border-[#DCD6CD] hover:border-[#181816] text-[11px] uppercase tracking-[0.2em] text-[#5C5852] hover:text-[#181816] transition cursor-pointer"
             >
-              <LogOut className="w-4 h-4" />
-              <span className="hidden sm:inline">Sair</span>
+              Sair
             </button>
-          </div>
+          </nav>
         </div>
       </header>
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8 space-y-8">
-        {/* CARDS DE RESUMO E BOTÃO PRINCIPAL "REALIZAR SORTEIO" */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-stretch">
-          <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-white p-5 rounded-3xl border border-stone-200 shadow-sm flex flex-col justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-stone-400">
-                Total de Participantes
-              </span>
-              <div className="text-4xl font-black text-stone-900 my-2">
-                {participants.length}
-              </div>
-              <span className="text-xs text-stone-500">
-                {hintsFilledCount} já preencheram dicas de presente
-              </span>
+      <main className="flex-1 max-w-7xl w-full mx-auto px-6 sm:px-10 py-10 space-y-12">
+        {/* BLOCO ARQUITETÔNICO DE MÉTRICAS E AÇÃO DE SORTEIO */}
+        <section className="grid grid-cols-1 lg:grid-cols-12 border border-[#DCD6CD] bg-[#FAF8F5] divide-y lg:divide-y-0 lg:divide-x divide-[#DCD6CD]">
+          <div className="lg:col-span-3 p-6 sm:p-8 flex flex-col justify-between">
+            <span className="text-[11px] uppercase tracking-[0.22em] text-[#8C6D53] font-semibold">
+              01 / Cadastrados
+            </span>
+            <div
+              style={fontSerifStyle}
+              className="text-5xl font-semibold text-[#181816] my-3"
+            >
+              {String(participants.length).padStart(2, '0')}
             </div>
-
-            <div className="bg-white p-5 rounded-3xl border border-stone-200 shadow-sm flex flex-col justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-stone-400">
-                Status do Sorteio
-              </span>
-              <div className="my-2">
-                {drawStatus === 'drawn' ? (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-900 font-extrabold text-sm">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-                    Sorteio Realizado
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100 text-amber-900 font-extrabold text-sm">
-                    <Clock className="w-4 h-4 text-amber-700" />
-                    Aguardando Sorteio
-                  </span>
-                )}
-              </div>
-              <span className="text-xs text-stone-500">
-                {drawStatus === 'drawn'
-                  ? `${accessedCount} de ${accessTokens.length} já abriram o link`
-                  : 'Mínimo de 2 pessoas para sortear'}
-              </span>
-            </div>
-
-            <div className="bg-white p-5 rounded-3xl border border-stone-200 shadow-sm flex flex-col justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-stone-400">
-                Disparos no WhatsApp
-              </span>
-              <div className="text-3xl font-black text-emerald-800 my-2">
-                {sentCount} / {accessTokens.length || participants.length}
-              </div>
-              <span className="text-xs text-stone-500">
-                Links diretos enviados sem código
-              </span>
-            </div>
+            <span className="text-xs text-[#5C5852]">
+              {hintsFilledCount} com dicas de presente salvas
+            </span>
           </div>
 
-          <div className="md:col-span-4 bg-gradient-to-br from-red-900 via-red-800 to-emerald-950 rounded-3xl p-6 text-white shadow-xl border border-amber-400/40 flex flex-col justify-between space-y-4">
+          <div className="lg:col-span-3 p-6 sm:p-8 flex flex-col justify-between">
+            <span className="text-[11px] uppercase tracking-[0.22em] text-[#8C6D53] font-semibold">
+              02 / Status do Sorteio
+            </span>
+            <div className="my-3">
+              {drawStatus === 'drawn' ? (
+                <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-[#2C4035] text-[#FAF8F5] text-xs uppercase tracking-[0.18em] font-semibold">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Sorteio Realizado
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-[#F3EFEA] border border-[#8C6D53] text-[#8C6D53] text-xs uppercase tracking-[0.18em] font-semibold">
+                  <Clock className="w-3.5 h-3.5" />
+                  Aguardando Sorteio
+                </span>
+              )}
+            </div>
+            <span className="text-xs text-[#5C5852]">
+              {drawStatus === 'drawn'
+                ? `${accessedCount} de ${accessTokens.length} já abriram o link`
+                : 'Mínimo de 2 participantes'}
+            </span>
+          </div>
+
+          <div className="lg:col-span-2 p-6 sm:p-8 flex flex-col justify-between">
+            <span className="text-[11px] uppercase tracking-[0.22em] text-[#8C6D53] font-semibold">
+              03 / WhatsApp
+            </span>
+            <div
+              style={fontSerifStyle}
+              className="text-4xl font-semibold text-[#2C4035] my-3"
+            >
+              {sentCount}/{accessTokens.length || participants.length}
+            </div>
+            <span className="text-xs text-[#5C5852]">
+              Links diretos enviados
+            </span>
+          </div>
+
+          <div className="lg:col-span-4 p-6 sm:p-8 bg-[#F3EFEA] flex flex-col justify-between space-y-4">
             <div>
-              <span className="text-[11px] font-bold uppercase tracking-widest text-amber-300 flex items-center gap-1.5">
-                <Shield className="w-3.5 h-3.5" />
-                Acesso Direto pelo Link
+              <span className="text-[10px] uppercase tracking-[0.25em] text-[#8E3B36] font-bold">
+                Sigilo Total • Sem Senhas
               </span>
-              <h3 className="text-lg font-extrabold mt-1">
+              <h3
+                style={fontSerifStyle}
+                className="text-2xl font-semibold text-[#181816] mt-1"
+              >
                 {drawStatus === 'drawn'
-                  ? 'Sorteio Concluído com Sigilo!'
-                  : 'Pronto para sortear a família?'}
+                  ? 'Links exclusivos gerados'
+                  : 'Executar sorteio da família'}
               </h3>
-              <p className="text-xs text-red-100 mt-1 leading-relaxed">
+              <p className="text-xs text-[#5C5852] mt-1 leading-relaxed">
                 {drawStatus === 'drawn'
-                  ? 'Cada familiar clica no seu link do WhatsApp, já vê quem tirou e cadastra suas próprias dicas.'
-                  : 'Gera um link exclusivo para cada familiar ver quem tirou sem precisar digitar código.'}
+                  ? 'Os pares estão criptografados. Distribua os links pelo WhatsApp.'
+                  : 'Gera um link único para cada familiar ver quem tirou e dar suas dicas.'}
               </p>
             </div>
 
@@ -2574,56 +2737,61 @@ Boas festas! 🎄✨`;
                 type="button"
                 disabled={isBusy || participants.length < 2}
                 onClick={handleRequestDraw}
-                className="w-full py-4 px-5 rounded-2xl bg-amber-400 hover:bg-amber-300 disabled:bg-stone-500 disabled:text-stone-300 text-red-950 font-black text-sm shadow-xl flex items-center justify-center gap-2 transition cursor-pointer"
+                className="w-full py-4 px-5 bg-[#2C4035] hover:bg-[#181816] disabled:bg-[#DCD6CD] disabled:text-[#5C5852] text-[#FAF8F5] text-xs uppercase tracking-[0.2em] font-bold flex items-center justify-between transition cursor-pointer"
               >
-                <Shuffle className="w-5 h-5" />
-                REALIZAR SORTEIO
+                <span>REALIZAR SORTEIO</span>
+                <Shuffle className="w-4 h-4" />
               </button>
             ) : (
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col sm:flex-row gap-2.5">
                 <button
                   type="button"
                   onClick={() => setAdminTab('whatsapp_dispatch')}
-                  className="w-full py-3.5 px-4 rounded-2xl bg-amber-400 hover:bg-amber-300 text-red-950 font-black text-xs sm:text-sm shadow-lg flex items-center justify-center gap-2 transition cursor-pointer"
+                  className="flex-1 py-3.5 px-4 bg-[#2C4035] hover:bg-[#181816] text-[#FAF8F5] text-xs uppercase tracking-[0.18em] font-bold flex items-center justify-center gap-2 transition cursor-pointer"
                 >
-                  <Send className="w-4 h-4" />
-                  ENVIAR LINKS PELO WHATSAPP
+                  <Send className="w-3.5 h-3.5" />
+                  Disparar WhatsApp
                 </button>
                 <button
                   type="button"
                   onClick={handleResetDraw}
-                  className="w-full py-2 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-red-200 text-xs font-semibold transition cursor-pointer"
+                  className="py-3.5 px-4 border border-[#8E3B36] text-[#8E3B36] hover:bg-[#8E3B36] hover:text-[#FAF8F5] text-xs uppercase tracking-[0.15em] font-semibold transition cursor-pointer"
                 >
-                  Cancelar e Reiniciar Sorteio
+                  Reiniciar
                 </button>
               </div>
             )}
           </div>
-        </div>
+        </section>
 
-        {/* ABA 1: LISTA DE PARTICIPANTES (CADASTRO SÓ COM NOME E WHATSAPP) */}
+        {/* ABA 01: RELAÇÃO DE PARTICIPANTES */}
         {adminTab === 'dashboard' && (
-          <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-md border border-stone-200 space-y-6">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-6 border-b border-stone-200">
+          <section className="border border-[#DCD6CD] bg-[#FAF8F5] p-6 sm:p-10 space-y-8">
+            <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-6 border-b border-[#DCD6CD]">
               <div>
-                <h2 className="text-xl sm:text-2xl font-extrabold text-stone-900 flex items-center gap-2.5">
-                  <Users className="w-7 h-7 text-red-800" />
-                  Participantes da Família ({participants.length})
+                <span className="text-xs uppercase tracking-[0.25em] text-[#8C6D53] font-semibold">
+                  01. Diretório da Família
+                </span>
+                <h2
+                  style={fontSerifStyle}
+                  className="text-3xl sm:text-4xl font-semibold text-[#181816] mt-1"
+                >
+                  Participantes Cadastrados
                 </h2>
-                <p className="text-xs sm:text-sm text-stone-500 mt-1">
-                  Cadastre apenas o <strong>Nome e o WhatsApp</strong>. Cada
-                  familiar preencherá suas próprias dicas de presente pelo link!
+                <p className="text-xs sm:text-sm text-[#5C5852] mt-1">
+                  Você só precisa cadastrar <strong>Nome e WhatsApp</strong>.
+                  Cada familiar preenche suas próprias dicas de presente ao
+                  abrir o link.
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2.5">
+              <div className="flex flex-wrap items-center gap-3">
                 {participants.length === 0 && drawStatus !== 'drawn' && (
                   <button
                     type="button"
                     onClick={handleLoadDemoParticipants}
-                    className="px-4 py-2.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-950 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                    className="px-4 py-3 border border-[#8C6D53] text-[#8C6D53] hover:bg-[#8C6D53] hover:text-[#FAF8F5] text-xs uppercase tracking-[0.18em] font-semibold transition cursor-pointer"
                   >
-                    <Star className="w-4 h-4 text-amber-700" />
                     Carregar Exemplos
                   </button>
                 )}
@@ -2632,103 +2800,109 @@ Boas festas! 🎄✨`;
                   type="button"
                   disabled={drawStatus === 'drawn'}
                   onClick={() => setCsvModalOpen(true)}
-                  className="px-4 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 text-emerald-900 border border-emerald-300 font-bold text-xs sm:text-sm flex items-center gap-2 transition cursor-pointer"
+                  className="px-5 py-3 border border-[#181816] bg-[#FAF8F5] hover:bg-[#F3EFEA] disabled:opacity-40 text-[#181816] text-xs uppercase tracking-[0.18em] font-semibold flex items-center gap-2 transition cursor-pointer"
                 >
-                  <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
-                  Importar CSV (Nome e Telefone)
+                  <FileSpreadsheet className="w-4 h-4 text-[#2C4035]" />
+                  Importar CSV
                 </button>
 
                 <button
                   type="button"
                   disabled={drawStatus === 'drawn'}
                   onClick={openNewParticipantModal}
-                  className="px-5 py-2.5 rounded-xl bg-red-800 hover:bg-red-700 disabled:opacity-50 text-white font-bold text-xs sm:text-sm shadow flex items-center gap-2 transition cursor-pointer"
+                  className="px-6 py-3 bg-[#181816] hover:bg-[#2C4035] disabled:opacity-40 text-[#FAF8F5] text-xs uppercase tracking-[0.18em] font-semibold flex items-center gap-2 transition cursor-pointer"
                 >
                   <UserPlus className="w-4 h-4" />
-                  Cadastrar Participante
+                  Novo Participante
                 </button>
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            {/* Busca */}
+            <div className="flex items-center justify-between">
               <div className="relative w-full sm:w-96">
-                <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <Search className="w-4 h-4 text-[#5C5852] absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Pesquisar familiar por nome ou WhatsApp..."
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-300 text-sm outline-none focus:border-red-800"
+                  placeholder="Filtrar por nome ou telefone..."
+                  className="w-full pl-10 pr-4 py-2.5 bg-[#F3EFEA] border border-[#DCD6CD] focus:border-[#181816] text-sm outline-none"
                 />
               </div>
             </div>
 
             {filteredParticipants.length === 0 ? (
-              <div className="p-12 rounded-2xl bg-stone-50 border border-dashed border-stone-300 text-center space-y-3">
-                <Users className="w-12 h-12 text-stone-400 mx-auto" />
-                <h3 className="text-base font-bold text-stone-700">
-                  Nenhum participante cadastrado
+              <div className="p-14 border border-dashed border-[#DCD6CD] bg-[#F3EFEA]/40 text-center space-y-3">
+                <span className="text-xs uppercase tracking-[0.25em] text-[#8C6D53]">
+                  Lista Vazia
+                </span>
+                <h3
+                  style={fontSerifStyle}
+                  className="text-2xl font-semibold text-[#181816]"
+                >
+                  Nenhum participante registrado
                 </h3>
-                <p className="text-xs text-stone-500 max-w-md mx-auto">
-                  Clique em "Cadastrar Participante" e informe apenas o Nome e o
-                  WhatsApp de cada familiar.
+                <p className="text-xs text-[#5C5852] max-w-md mx-auto">
+                  Adicione manualmente informando Nome e WhatsApp ou importe uma
+                  planilha CSV simples.
                 </p>
               </div>
             ) : (
-              <div className="overflow-x-auto rounded-2xl border border-stone-200">
+              <div className="overflow-x-auto border border-[#DCD6CD]">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-stone-100 border-b border-stone-200 text-[11px] font-extrabold uppercase tracking-wider text-stone-500">
-                      <th className="py-3.5 px-4">Nome Completo</th>
-                      <th className="py-3.5 px-4">WhatsApp (DDD)</th>
-                      <th className="py-3.5 px-4">
-                        Status das Dicas (Preenchidas pelo Familiar)
-                      </th>
-                      <th className="py-3.5 px-4 text-right">Ações</th>
+                    <tr className="bg-[#F3EFEA] border-b border-[#DCD6CD] text-[10px] uppercase tracking-[0.22em] text-[#5C5852] font-bold">
+                      <th className="py-4 px-5">#</th>
+                      <th className="py-4 px-5">Nome Completo</th>
+                      <th className="py-4 px-5">WhatsApp (DDD)</th>
+                      <th className="py-4 px-5">Dicas de Presente</th>
+                      <th className="py-4 px-5 text-right">Ações</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-stone-100 text-sm">
-                    {filteredParticipants.map((p) => {
+                  <tbody className="divide-y divide-[#DCD6CD] text-sm">
+                    {filteredParticipants.map((p, idx) => {
                       const filled = hasFilledGiftHints(p);
                       return (
-                        <tr key={p.id} className="hover:bg-stone-50/80">
-                          <td className="py-3.5 px-4 font-bold text-stone-900">
+                        <tr key={p.id} className="hover:bg-[#F3EFEA]/50">
+                          <td className="py-4 px-5 font-mono text-xs text-[#8C6D53]">
+                            {String(idx + 1).padStart(2, '0')}
+                          </td>
+                          <td className="py-4 px-5 font-semibold text-[#181816]">
                             {p.fullName}
                           </td>
-                          <td className="py-3.5 px-4 font-mono text-xs text-emerald-800 font-semibold">
+                          <td className="py-4 px-5 font-mono text-xs text-[#2C4035] font-medium">
                             {formatPhoneDisplay(p.phone)}
                           </td>
-                          <td className="py-3.5 px-4">
+                          <td className="py-4 px-5">
                             {filled ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-900 text-xs font-bold">
-                                <CheckCircle className="w-3.5 h-3.5 text-emerald-700" />
-                                Já preencheu dicas no link
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#2C4035]/10 text-[#2C4035] text-xs font-semibold">
+                                <span className="w-1.5 h-1.5 bg-[#2C4035]" />
+                                Preenchidas pelo familiar
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-stone-100 text-stone-500 text-xs font-medium">
-                                <Clock className="w-3.5 h-3.5" />
+                              <span className="inline-flex items-center gap-1.5 text-xs text-[#5C5852]">
+                                <span className="w-1.5 h-1.5 bg-[#8C6D53]" />
                                 Preenche ao abrir o link
                               </span>
                             )}
                           </td>
-                          <td className="py-3.5 px-4 text-right">
-                            <div className="inline-flex items-center gap-1.5">
+                          <td className="py-4 px-5 text-right">
+                            <div className="inline-flex items-center gap-2">
                               <button
                                 type="button"
                                 onClick={() => openEditParticipantModal(p)}
-                                className="px-3 py-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                                className="px-3 py-1.5 border border-[#DCD6CD] hover:border-[#181816] text-xs uppercase tracking-wider text-[#181816] cursor-pointer"
                               >
-                                <Edit3 className="w-3.5 h-3.5" />
-                                Editar Nome/Tel
+                                Editar
                               </button>
                               {drawStatus !== 'drawn' && (
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteParticipant(p)}
-                                  className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 cursor-pointer"
-                                  title="Excluir participante"
+                                  className="px-3 py-1.5 border border-[#DCD6CD] hover:border-[#8E3B36] text-xs uppercase tracking-wider text-[#8E3B36] cursor-pointer"
                                 >
-                                  <Trash2 className="w-4 h-4" />
+                                  Remover
                                 </button>
                               )}
                             </div>
@@ -2740,50 +2914,61 @@ Boas festas! 🎄✨`;
                 </table>
               </div>
             )}
-          </div>
+          </section>
         )}
 
-        {/* ABA 2: ENVIAR RESULTADOS PELO WHATSAPP */}
+        {/* ABA 02: DISPARO AUTOMÁTICO DE WHATSAPP (ULTRAMSG) + PERSONALIZAÇÃO DE MENSAGEM */}
         {adminTab === 'whatsapp_dispatch' && (
-          <div className="space-y-6">
+          <div className="space-y-10">
             {drawStatus !== 'drawn' ? (
-              <div className="bg-white rounded-3xl p-10 text-center border border-stone-200 space-y-4">
-                <FestiveGiftBoxSVG className="w-24 h-24 mx-auto" />
-                <h3 className="text-xl font-extrabold text-stone-900">
-                  Realize o Sorteio Primeiro
+              <div className="border border-[#DCD6CD] bg-[#FAF8F5] p-12 text-center space-y-4">
+                <span className="text-xs uppercase tracking-[0.25em] text-[#8C6D53]">
+                  02. Distribuição de Acessos
+                </span>
+                <h3
+                  style={fontSerifStyle}
+                  className="text-3xl font-semibold text-[#181816]"
+                >
+                  Execute o Sorteio Primeiro
                 </h3>
-                <p className="text-sm text-stone-600 max-w-md mx-auto">
-                  Assim que você clicar em "REALIZAR SORTEIO", o sistema gerará
-                  os links exclusivos diretos para disparar no WhatsApp de toda
-                  a família.
+                <p className="text-sm text-[#5C5852] max-w-md mx-auto">
+                  Após clicar em "REALIZAR SORTEIO", os links individuais sem
+                  senha serão listados aqui para envio automático via UltraMsg
+                  ou WhatsApp Web.
                 </p>
               </div>
             ) : (
               <>
-                <div className="bg-gradient-to-r from-emerald-950 via-emerald-900 to-stone-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl border border-amber-400/30 space-y-6">
-                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                {/* Painel de Configuração UltraMsg + Template de Mensagem Editável */}
+                <section className="border border-[#181816] bg-[#F3EFEA] p-6 sm:p-10 space-y-8">
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-6 border-b border-[#DCD6CD]">
                     <div>
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/20 text-amber-300 text-xs font-bold uppercase mb-2">
-                        <Zap className="w-3.5 h-3.5" />
-                        Disparo Automático em Lote + Individual
+                      <span className="text-xs uppercase tracking-[0.25em] text-[#2C4035] font-bold">
+                        02. Motor de Disparo Automático (UltraMsg / API)
                       </span>
-                      <h2 className="text-2xl font-extrabold">
-                        ENVIAR LINKS DIRETOS PELO WHATSAPP
+                      <h2
+                        style={fontSerifStyle}
+                        className="text-3xl sm:text-4xl font-semibold text-[#181816] mt-1"
+                      >
+                        Distribuição de Links pelo WhatsApp
                       </h2>
-                      <p className="text-xs sm:text-sm text-emerald-100 mt-1">
-                        Cada familiar recebe apenas o próprio link: clicou, já
-                        vê quem tirou e preenche suas dicas de presente!
+                      <p className="text-xs sm:text-sm text-[#5C5852] mt-1">
+                        O sistema adiciona automaticamente o DDI{' '}
+                        <code>+55</code> e envia o link individual de cada
+                        familiar.
                       </p>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-3">
+                    <div>
                       {!isAutoDispatching ? (
                         <button
                           type="button"
-                          onClick={() => handleStartAutomaticBatchDispatch(true)}
-                          className="px-6 py-4 rounded-2xl bg-amber-400 hover:bg-amber-300 text-red-950 font-black text-xs sm:text-sm shadow-xl flex items-center gap-2 transition cursor-pointer"
+                          onClick={() =>
+                            handleStartAutomaticBatchDispatch(true)
+                          }
+                          className="px-7 py-4 bg-[#2C4035] hover:bg-[#181816] text-[#FAF8F5] text-xs uppercase tracking-[0.2em] font-bold flex items-center gap-3 transition cursor-pointer"
                         >
-                          <Play className="w-4 h-4 fill-red-950" />
+                          <Play className="w-4 h-4" />
                           DISPARAR TODOS AUTOMATICAMENTE (API)
                         </button>
                       ) : (
@@ -2792,7 +2977,7 @@ Boas festas! 🎄✨`;
                           onClick={() => {
                             abortDispatchRef.current = true;
                           }}
-                          className="px-6 py-4 rounded-2xl bg-red-600 hover:bg-red-500 text-white font-black text-xs sm:text-sm shadow-xl flex items-center gap-2 transition cursor-pointer"
+                          className="px-7 py-4 bg-[#8E3B36] text-[#FAF8F5] text-xs uppercase tracking-[0.2em] font-bold flex items-center gap-3 transition cursor-pointer"
                         >
                           <Pause className="w-4 h-4" />
                           PAUSAR FILA AUTOMÁTICA
@@ -2801,39 +2986,62 @@ Boas festas! 🎄✨`;
                     </div>
                   </div>
 
-                  {/* Configuração rápida do Gateway de Disparo Automático */}
-                  <div className="bg-black/25 p-5 rounded-2xl border border-white/10 space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                      <div>
-                        <label className="block text-[11px] font-bold uppercase text-amber-200 mb-1">
-                          Gateway de Disparo WhatsApp
-                        </label>
-                        <select
-                          value={waProvider}
-                          onChange={(e) => setWaProvider(e.target.value)}
-                          className="w-full px-3 py-2.5 rounded-xl bg-stone-900 text-white border border-white/20 text-xs font-semibold outline-none"
-                        >
-                          <option value="ultramsg">
-                            ⚡ UltraMsg API (Disparo 100% Automático)
-                          </option>
-                          <option value="zapi">
-                            ⚡ Z-API (Disparo 100% Automático)
-                          </option>
-                          <option value="evolution">
-                            ⚡ Evolution API (Disparo 100% Automático)
-                          </option>
-                          <option value="webhook">
-                            🔗 Webhook Próprio / n8n / Make
-                          </option>
-                          <option value="wame_assist">
-                            📱 WhatsApp Web Direto (wa.me gratuito)
-                          </option>
-                        </select>
+                  {/* Grid de Credenciais API + Editor de Mensagem do WhatsApp */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                    {/* Credenciais da API */}
+                    <div className="lg:col-span-6 space-y-4">
+                      <span className="block text-xs uppercase tracking-[0.2em] font-bold text-[#181816]">
+                        A. Conexão da Instância (UltraMsg / Gateway)
+                      </span>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[11px] uppercase tracking-[0.15em] text-[#5C5852] mb-1.5">
+                            Provedor de Envio
+                          </label>
+                          <select
+                            value={waProvider}
+                            onChange={(e) => setWaProvider(e.target.value)}
+                            className="w-full px-3.5 py-2.5 bg-[#FAF8F5] border border-[#DCD6CD] text-xs font-semibold outline-none"
+                          >
+                            <option value="ultramsg">
+                              UltraMsg API (100% Automático)
+                            </option>
+                            <option value="zapi">
+                              Z-API Instância Web (Automático)
+                            </option>
+                            <option value="evolution">
+                              Evolution API (Automático)
+                            </option>
+                            <option value="webhook">Webhook Customizado</option>
+                            <option value="wame_assist">
+                              WhatsApp Web Direto (wa.me)
+                            </option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] uppercase tracking-[0.15em] text-[#5C5852] mb-1.5">
+                            Intervalo entre Envios
+                          </label>
+                          <select
+                            value={waDelaySeconds}
+                            onChange={(e) =>
+                              setWaDelaySeconds(Number(e.target.value))
+                            }
+                            className="w-full px-3.5 py-2.5 bg-[#FAF8F5] border border-[#DCD6CD] text-xs font-semibold outline-none"
+                          >
+                            <option value={2}>2 segundos</option>
+                            <option value={4}>4 segundos (Recomendado)</option>
+                            <option value={7}>7 segundos</option>
+                          </select>
+                        </div>
                       </div>
 
-                      {waProvider === 'evolution' || waProvider === 'webhook' ? (
+                      {(waProvider === 'evolution' ||
+                        waProvider === 'webhook') && (
                         <div>
-                          <label className="block text-[11px] font-bold uppercase text-amber-200 mb-1">
+                          <label className="block text-[11px] uppercase tracking-[0.15em] text-[#5C5852] mb-1">
                             URL do Servidor / Webhook
                           </label>
                           <input
@@ -2841,82 +3049,91 @@ Boas festas! 🎄✨`;
                             value={waInstanceUrl}
                             onChange={(e) => setWaInstanceUrl(e.target.value)}
                             placeholder="https://sua-api.com"
-                            className="w-full px-3 py-2 rounded-xl bg-stone-900 text-white border border-white/20 text-xs outline-none"
+                            className="w-full px-3.5 py-2.5 bg-[#FAF8F5] border border-[#DCD6CD] text-xs outline-none"
                           />
                         </div>
-                      ) : null}
+                      )}
 
                       {waProvider !== 'webhook' &&
-                      waProvider !== 'wame_assist' ? (
-                        <div>
-                          <label className="block text-[11px] font-bold uppercase text-amber-200 mb-1">
-                            ID / Nome da Instância
-                          </label>
-                          <input
-                            type="text"
-                            value={waInstanceId}
-                            onChange={(e) => setWaInstanceId(e.target.value)}
-                            placeholder="Ex: instance115432"
-                            className="w-full px-3 py-2 rounded-xl bg-stone-900 text-white border border-white/20 text-xs outline-none"
-                          />
-                        </div>
-                      ) : null}
-
-                      {waProvider !== 'wame_assist' ? (
-                        <div>
-                          <label className="block text-[11px] font-bold uppercase text-amber-200 mb-1">
-                            Token / API Key
-                          </label>
-                          <input
-                            type="password"
-                            value={waApiToken}
-                            onChange={(e) => setWaApiToken(e.target.value)}
-                            placeholder="Token da sua instância"
-                            className="w-full px-3 py-2 rounded-xl bg-stone-900 text-white border border-white/20 text-xs outline-none"
-                          />
-                        </div>
-                      ) : null}
-
-                      <div>
-                        <label className="block text-[11px] font-bold uppercase text-amber-200 mb-1">
-                          Intervalo Anti-Bloqueio
-                        </label>
-                        <select
-                          value={waDelaySeconds}
-                          onChange={(e) =>
-                            setWaDelaySeconds(Number(e.target.value))
-                          }
-                          className="w-full px-3 py-2.5 rounded-xl bg-stone-900 text-white border border-white/20 text-xs font-semibold outline-none"
-                        >
-                          <option value={2}>2 segundos entre envios</option>
-                          <option value={4}>4 segundos (Recomendado)</option>
-                          <option value={7}>7 segundos entre envios</option>
-                        </select>
-                      </div>
+                        waProvider !== 'wame_assist' && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-[11px] uppercase tracking-[0.15em] text-[#5C5852] mb-1">
+                                Instance ID (Ex: instance115432)
+                              </label>
+                              <input
+                                type="text"
+                                value={waInstanceId}
+                                onChange={(e) =>
+                                  setWaInstanceId(e.target.value)
+                                }
+                                placeholder="instanceXXXXXX"
+                                className="w-full px-3.5 py-2.5 bg-[#FAF8F5] border border-[#DCD6CD] text-xs font-mono outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] uppercase tracking-[0.15em] text-[#5C5852] mb-1">
+                                Token da Instância
+                              </label>
+                              <input
+                                type="password"
+                                value={waApiToken}
+                                onChange={(e) => setWaApiToken(e.target.value)}
+                                placeholder="Token UltraMsg / API"
+                                className="w-full px-3.5 py-2.5 bg-[#FAF8F5] border border-[#DCD6CD] text-xs font-mono outline-none"
+                              />
+                            </div>
+                          </div>
+                        )}
                     </div>
 
-                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                      <span className="text-[11px] text-emerald-200">
-                        🔒 <strong>Zero Senhas:</strong> O familiar só clica no
-                        link recebido no WhatsApp, vê quem tirou e já pode
-                        preencher suas dicas de presente!
-                      </span>
-                      <button
-                        type="button"
-                        onClick={handleSaveGatewayConfig}
-                        className="px-3.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-amber-200 text-xs font-bold transition cursor-pointer"
-                      >
-                        Salvar Configuração de API
-                      </button>
+                    {/* Personalização da Mensagem direto no Painel */}
+                    <div className="lg:col-span-6 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="block text-xs uppercase tracking-[0.2em] font-bold text-[#181816]">
+                          B. Personalizar Texto da Mensagem
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCustomWaTemplate(DEFAULT_WHATSAPP_TEMPLATE)
+                          }
+                          className="text-[11px] uppercase tracking-wider text-[#8C6D53] hover:text-[#181816] underline cursor-pointer"
+                        >
+                          Restaurar Padrão
+                        </button>
+                      </div>
+
+                      <textarea
+                        rows={6}
+                        value={customWaTemplate}
+                        onChange={(e) => setCustomWaTemplate(e.target.value)}
+                        className="w-full p-3.5 bg-[#FAF8F5] border border-[#DCD6CD] focus:border-[#181816] text-xs leading-relaxed outline-none font-sans"
+                      />
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#5C5852]">
+                        <span>
+                          Variáveis automáticas: <code>{'{nome}'}</code>,{' '}
+                          <code>{'{evento}'}</code>, <code>{'{link}'}</code>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleSaveGatewayConfig}
+                          className="px-4 py-2 bg-[#181816] hover:bg-[#2C4035] text-[#FAF8F5] text-[11px] uppercase tracking-[0.18em] font-semibold transition cursor-pointer"
+                        >
+                          Salvar API & Mensagem
+                        </button>
+                      </div>
                     </div>
                   </div>
 
+                  {/* Barra de Progresso e Log */}
                   {(isAutoDispatching || dispatchLogs.length > 0) && (
-                    <div className="bg-black/40 p-4 rounded-2xl border border-white/10 space-y-3">
-                      <div className="flex items-center justify-between text-xs font-bold">
-                        <span className="text-amber-300">
-                          Progresso da Fila Automática: {dispatchProgress.current}{' '}
-                          de {dispatchProgress.total}
+                    <div className="border border-[#DCD6CD] bg-[#FAF8F5] p-5 space-y-3">
+                      <div className="flex items-center justify-between text-xs uppercase tracking-[0.18em] font-bold">
+                        <span>
+                          Progresso: {dispatchProgress.current} /{' '}
+                          {dispatchProgress.total}
                         </span>
                         <span>
                           {dispatchProgress.total > 0
@@ -2929,9 +3146,9 @@ Boas festas! 🎄✨`;
                           %
                         </span>
                       </div>
-                      <div className="w-full h-2.5 bg-white/10 rounded-full overflow-hidden">
+                      <div className="w-full h-1.5 bg-[#DCD6CD]">
                         <div
-                          className="h-full bg-amber-400 transition-all duration-300"
+                          className="h-full bg-[#2C4035] transition-all duration-300"
                           style={{
                             width: `${
                               dispatchProgress.total > 0
@@ -2943,104 +3160,98 @@ Boas festas! 🎄✨`;
                           }}
                         />
                       </div>
-                      <div className="max-h-32 overflow-y-auto font-mono text-[11px] text-emerald-200 space-y-1">
-                        {dispatchLogs.map((log, index) => (
-                          <div key={index}>{log}</div>
+                      <div className="max-h-32 overflow-y-auto font-mono text-xs text-[#5C5852] space-y-1 pt-1">
+                        {dispatchLogs.map((log, i) => (
+                          <div key={i}>{log}</div>
                         ))}
                       </div>
                     </div>
                   )}
-                </div>
+                </section>
 
-                {/* Lista de Participantes com Status de Envio */}
-                <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-md border border-stone-200 space-y-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-stone-200">
-                    <div>
-                      <h3 className="text-lg font-extrabold text-stone-900">
-                        Lista de Links Diretos e Status de Envio
-                      </h3>
-                      <p className="text-xs text-stone-500">
-                        Acompanhe quem já recebeu no WhatsApp, quem já abriu o
-                        link e quem já preencheu as dicas de presente.
-                      </p>
-                    </div>
+                {/* Tabela de Envios Individuais e Teste de Link */}
+                <section className="border border-[#DCD6CD] bg-[#FAF8F5] p-6 sm:p-10 space-y-6">
+                  <div>
+                    <span className="text-xs uppercase tracking-[0.25em] text-[#8C6D53] font-semibold">
+                      Relatório de Entregas
+                    </span>
+                    <h3
+                      style={fontSerifStyle}
+                      className="text-2xl sm:text-3xl font-semibold text-[#181816] mt-1"
+                    >
+                      Links Exclusivos por Participante
+                    </h3>
                   </div>
 
-                  <div className="overflow-x-auto rounded-2xl border border-stone-200">
+                  <div className="overflow-x-auto border border-[#DCD6CD]">
                     <table className="w-full text-left border-collapse">
                       <thead>
-                        <tr className="bg-stone-100 border-b border-stone-200 text-[11px] font-extrabold uppercase tracking-wider text-stone-500">
-                          <th className="py-3.5 px-4">Participante</th>
-                          <th className="py-3.5 px-4">Telefone (WhatsApp)</th>
-                          <th className="py-3.5 px-4">Status do Envio</th>
-                          <th className="py-3.5 px-4">Abriu o Link?</th>
-                          <th className="py-3.5 px-4">Dicas de Presente</th>
-                          <th className="py-3.5 px-4 text-right">
-                            Ações de Envio
-                          </th>
+                        <tr className="bg-[#F3EFEA] border-b border-[#DCD6CD] text-[10px] uppercase tracking-[0.22em] text-[#5C5852] font-bold">
+                          <th className="py-4 px-5">Participante</th>
+                          <th className="py-4 px-5">WhatsApp</th>
+                          <th className="py-4 px-5">Status Disparo</th>
+                          <th className="py-4 px-5">Acesso ao Link</th>
+                          <th className="py-4 px-5">Dicas Cadastradas</th>
+                          <th className="py-4 px-5 text-right">Ações</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-stone-100 text-sm">
+                      <tbody className="divide-y divide-[#DCD6CD] text-sm">
                         {accessTokens.map((tk) => {
                           const partDoc = participants.find(
                             (p) => p.id === tk.participantId
                           );
                           const hasHints = hasFilledGiftHints(partDoc);
                           return (
-                            <tr key={tk.id} className="hover:bg-stone-50">
-                              <td className="py-3.5 px-4 font-bold text-stone-900">
+                            <tr key={tk.id} className="hover:bg-[#F3EFEA]/40">
+                              <td className="py-4 px-5 font-semibold text-[#181816]">
                                 {tk.participantName}
                               </td>
-                              <td className="py-3.5 px-4 font-mono text-xs text-stone-600">
+                              <td className="py-4 px-5 font-mono text-xs text-[#5C5852]">
                                 {formatPhoneDisplay(tk.participantPhone)}
                               </td>
-                              <td className="py-3.5 px-4">
+                              <td className="py-4 px-5">
                                 {tk.whatsappStatus === 'sent' ? (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">
-                                    <CheckCircle className="w-3.5 h-3.5" />
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#2C4035] text-[#FAF8F5] text-[11px] uppercase tracking-wider font-semibold">
                                     Enviado
                                   </span>
                                 ) : tk.whatsappStatus === 'error' ? (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-red-100 text-red-800 text-xs font-bold">
-                                    <XCircle className="w-3.5 h-3.5" />
-                                    Erro API
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#8E3B36] text-[#FAF8F5] text-[11px] uppercase tracking-wider font-semibold">
+                                    Falha API
                                   </span>
                                 ) : (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold">
-                                    <Clock className="w-3.5 h-3.5" />
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#F3EFEA] border border-[#DCD6CD] text-[#5C5852] text-[11px] uppercase tracking-wider font-semibold">
                                     Pendente
                                   </span>
                                 )}
                               </td>
-                              <td className="py-3.5 px-4 text-xs">
+                              <td className="py-4 px-5 text-xs">
                                 {tk.hasAccessedResult ? (
-                                  <span className="text-emerald-700 font-bold">
-                                    ✅ Já viu quem tirou
+                                  <span className="text-[#2C4035] font-semibold">
+                                    ✓ Já visualizou
                                   </span>
                                 ) : (
-                                  <span className="text-stone-400">
-                                    Ainda não abriu
+                                  <span className="text-[#5C5852]">
+                                    Não aberto
                                   </span>
                                 )}
                               </td>
-                              <td className="py-3.5 px-4 text-xs">
+                              <td className="py-4 px-5 text-xs">
                                 {hasHints ? (
-                                  <span className="text-emerald-800 font-bold">
-                                    🎁 Dicas preenchidas
+                                  <span className="text-[#2C4035] font-semibold">
+                                    ✓ Preenchidas
                                   </span>
                                 ) : (
-                                  <span className="text-stone-400">
-                                    Sem dicas ainda
+                                  <span className="text-[#5C5852]">
+                                    Em branco
                                   </span>
                                 )}
                               </td>
-                              <td className="py-3.5 px-4 text-right">
-                                <div className="inline-flex items-center gap-1.5">
+                              <td className="py-4 px-5 text-right">
+                                <div className="inline-flex items-center gap-2">
                                   <button
                                     type="button"
                                     onClick={() => setPreviewMessageModal(tk)}
-                                    className="px-2.5 py-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold cursor-pointer"
-                                    title="Revisar mensagem antes de enviar"
+                                    className="px-3 py-1.5 border border-[#DCD6CD] hover:border-[#181816] text-[11px] uppercase tracking-wider text-[#181816] cursor-pointer"
                                   >
                                     Ver Msg
                                   </button>
@@ -3051,10 +3262,10 @@ Boas festas! 🎄✨`;
                                       setIsSimulatingParticipant(true);
                                       setActiveParticipantToken(tk.token);
                                     }}
-                                    className="px-2.5 py-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold cursor-pointer"
-                                    title="Simular tela deste participante (sem spoiler)"
+                                    className="px-3 py-1.5 border border-[#DCD6CD] hover:border-[#181816] text-[11px] uppercase tracking-wider text-[#5C5852] hover:text-[#181816] cursor-pointer"
+                                    title="Testar página do participante sem revelar o nome sorteado"
                                   >
-                                    Simular
+                                    Testar Link
                                   </button>
 
                                   <button
@@ -3062,10 +3273,10 @@ Boas festas! 🎄✨`;
                                     onClick={() =>
                                       handleSendDirectWhatsApp(tk, true)
                                     }
-                                    className="px-3.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                                    className="px-3.5 py-1.5 bg-[#2C4035] hover:bg-[#181816] text-[#FAF8F5] text-[11px] uppercase tracking-wider font-semibold flex items-center gap-1.5 cursor-pointer"
                                   >
-                                    <Send className="w-3.5 h-3.5" />
-                                    WhatsApp
+                                    <span>wa.me</span>
+                                    <ArrowUpRight className="w-3.5 h-3.5" />
                                   </button>
                                 </div>
                               </td>
@@ -3075,109 +3286,121 @@ Boas festas! 🎄✨`;
                       </tbody>
                     </table>
                   </div>
-                </div>
+                </section>
               </>
             )}
           </div>
         )}
 
-        {/* ABA 3: CONFIGURAÇÕES DO EVENTO */}
+        {/* ABA 03: CONFIGURAÇÕES DO EVENTO */}
         {adminTab === 'settings' && (
-          <div className="max-w-3xl mx-auto space-y-6">
-            <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-md border border-stone-200 space-y-6">
-              <h2 className="text-xl font-extrabold text-stone-900 flex items-center gap-2">
-                <Settings className="w-6 h-6 text-red-800" />
-                Configurações do Evento e Formato dos Links
+          <section className="max-w-3xl border border-[#DCD6CD] bg-[#FAF8F5] p-6 sm:p-10 space-y-8">
+            <div className="pb-4 border-b border-[#DCD6CD]">
+              <span className="text-xs uppercase tracking-[0.25em] text-[#8C6D53] font-semibold">
+                03. Parâmetros Gerais
+              </span>
+              <h2
+                style={fontSerifStyle}
+                className="text-3xl font-semibold text-[#181816] mt-1"
+              >
+                Configurações da Edição
               </h2>
+            </div>
 
-              <form onSubmit={handleSaveGatewayConfig} className="space-y-4">
+            <form onSubmit={handleSaveGatewayConfig} className="space-y-5">
+              <div>
+                <label className="block text-xs uppercase tracking-[0.18em] font-semibold text-[#181816] mb-2">
+                  Título do Evento Familiar
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={eventTitleInput}
+                  onChange={(e) => setEventTitleInput(e.target.value)}
+                  className="w-full px-4 py-3 bg-[#F3EFEA] border border-[#DCD6CD] focus:border-[#181816] text-sm outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase text-stone-700 mb-1">
-                    Nome do Evento Familiar
+                  <label className="block text-xs uppercase tracking-[0.18em] font-semibold text-[#181816] mb-2">
+                    Data da Confraternização
+                  </label>
+                  <input
+                    type="date"
+                    value={eventDateInput}
+                    onChange={(e) => setEventDateInput(e.target.value)}
+                    className="w-full px-4 py-3 bg-[#F3EFEA] border border-[#DCD6CD] focus:border-[#181816] text-sm outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs uppercase tracking-[0.18em] font-semibold text-[#181816] mb-2">
+                    Valor Sugerido do Presente
                   </label>
                   <input
                     type="text"
-                    required
-                    value={eventTitleInput}
-                    onChange={(e) => setEventTitleInput(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border border-stone-300 text-sm"
+                    value={eventValueInput}
+                    onChange={(e) => setEventValueInput(e.target.value)}
+                    className="w-full px-4 py-3 bg-[#F3EFEA] border border-[#DCD6CD] focus:border-[#181816] text-sm outline-none"
                   />
                 </div>
+              </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold uppercase text-stone-700 mb-1">
-                      Data da Confraternização
-                    </label>
-                    <input
-                      type="date"
-                      value={eventDateInput}
-                      onChange={(e) => setEventDateInput(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl border border-stone-300 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold uppercase text-stone-700 mb-1">
-                      Valor Sugerido de Presente
-                    </label>
-                    <input
-                      type="text"
-                      value={eventValueInput}
-                      onChange={(e) => setEventValueInput(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl border border-stone-300 text-sm"
-                    />
-                  </div>
-                </div>
+              <div>
+                <label className="block text-xs uppercase tracking-[0.18em] font-semibold text-[#181816] mb-2">
+                  Estrutura dos Links Individuais
+                </label>
+                <select
+                  value={urlFormatPreference}
+                  onChange={(e) => setUrlFormatPreference(e.target.value)}
+                  className="w-full px-4 py-3 bg-[#F3EFEA] border border-[#DCD6CD] text-sm outline-none"
+                >
+                  <option value="path">
+                    Rota Limpa: https://seusite.com/amigo-secreto/8f7a2c91
+                  </option>
+                  <option value="query">
+                    Parâmetro Universal:
+                    https://seusite.com/?amigo-secreto=8f7a2c91
+                  </option>
+                </select>
+              </div>
 
-                <div>
-                  <label className="block text-xs font-bold uppercase text-stone-700 mb-1">
-                    Formato dos Links Individuais no WhatsApp
-                  </label>
-                  <select
-                    value={urlFormatPreference}
-                    onChange={(e) => setUrlFormatPreference(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border border-stone-300 text-sm"
-                  >
-                    <option value="path">
-                      Padrão Amigável: https://seusite.com/amigo-secreto/8f7a2c91
-                    </option>
-                    <option value="query">
-                      Compatibilidade Universal Sem Rewrite:
-                      https://seusite.com/?amigo-secreto=8f7a2c91
-                    </option>
-                  </select>
-                </div>
-
-                <div className="flex justify-end pt-2">
-                  <button
-                    type="submit"
-                    disabled={isBusy}
-                    className="px-6 py-3 rounded-xl bg-emerald-800 hover:bg-emerald-700 text-white font-bold text-sm shadow cursor-pointer"
-                  >
-                    Salvar Configurações
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
+              <div className="flex justify-end pt-4 border-t border-[#DCD6CD]">
+                <button
+                  type="submit"
+                  disabled={isBusy}
+                  className="px-8 py-4 bg-[#181816] hover:bg-[#2C4035] text-[#FAF8F5] text-xs uppercase tracking-[0.2em] font-bold transition cursor-pointer"
+                >
+                  Salvar Alterações
+                </button>
+              </div>
+            </form>
+          </section>
         )}
       </main>
 
-      {/* MODAL SIMPLIFICADO: CADASTRAR APENAS NOME E WHATSAPP */}
+      {/* MODAL: CADASTRAR / EDITAR PARTICIPANTE (APENAS NOME E WHATSAPP) */}
       {participantModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-stone-200 space-y-5 my-8">
-            <div className="flex items-center justify-between pb-3 border-b border-stone-200">
-              <h3 className="text-xl font-extrabold text-stone-900 flex items-center gap-2">
-                <UserPlus className="w-6 h-6 text-red-800" />
-                {editingParticipantId
-                  ? 'Editar Participante'
-                  : 'Cadastrar Participante'}
-              </h3>
+        <div className="fixed inset-0 z-50 bg-[#181816]/60 backdrop-blur-[2px] flex items-center justify-center p-4">
+          <div className="bg-[#FAF8F5] border border-[#181816] max-w-md w-full p-6 sm:p-10 space-y-6">
+            <div className="flex items-start justify-between pb-4 border-b border-[#DCD6CD]">
+              <div>
+                <span className="text-[10px] uppercase tracking-[0.25em] text-[#8C6D53] font-bold">
+                  Cadastro Simplificado
+                </span>
+                <h3
+                  style={fontSerifStyle}
+                  className="text-2xl font-semibold text-[#181816] mt-1"
+                >
+                  {editingParticipantId
+                    ? 'Editar Participante'
+                    : 'Adicionar Familiar'}
+                </h3>
+              </div>
               <button
                 type="button"
                 onClick={() => setParticipantModalOpen(false)}
-                className="text-stone-400 hover:text-stone-700 font-bold"
+                className="text-sm text-[#5C5852] hover:text-[#181816]"
               >
                 ✕
               </button>
@@ -3185,7 +3408,7 @@ Boas festas! 🎄✨`;
 
             <form onSubmit={handleSaveParticipant} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold uppercase text-stone-700 mb-1">
+                <label className="block text-[11px] uppercase tracking-[0.18em] font-semibold text-[#181816] mb-1.5">
                   Nome Completo *
                 </label>
                 <input
@@ -3195,12 +3418,12 @@ Boas festas! 🎄✨`;
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
                   placeholder="Ex: Pedro Henrique"
-                  className="w-full px-4 py-3 rounded-xl border border-stone-300 text-sm"
+                  className="w-full px-4 py-3 bg-[#F3EFEA] border border-[#DCD6CD] focus:border-[#181816] text-sm outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase text-emerald-900 mb-1">
+                <label className="block text-[11px] uppercase tracking-[0.18em] font-semibold text-[#181816] mb-1.5">
                   WhatsApp com DDD *
                 </label>
                 <input
@@ -3209,33 +3432,29 @@ Boas festas! 🎄✨`;
                   value={formPhone}
                   onChange={(e) => setFormPhone(e.target.value)}
                   placeholder="Ex: 31999999999"
-                  className="w-full px-4 py-3 rounded-xl border border-stone-300 text-sm font-mono"
+                  className="w-full px-4 py-3 bg-[#F3EFEA] border border-[#DCD6CD] focus:border-[#181816] text-sm font-mono outline-none"
                 />
               </div>
 
-              <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-950">
-                🎁 <strong>Dicas de Presente:</strong> Você não precisa
-                preencher nada sobre presentes aqui! Quando o participante abrir
-                o link dele no WhatsApp, terá um botão{' '}
-                <strong>"Dar Dica de Presente"</strong> para ele mesmo preencher.
+              <div className="p-4 bg-[#F3EFEA] border-l-2 border-[#8C6D53] text-xs text-[#5C5852] leading-relaxed">
+                As dicas de presente e tamanhos de roupa serão preenchidas pelo
+                próprio familiar ao acessar o link recebido no WhatsApp.
               </div>
 
-              <div className="flex justify-end gap-2.5 pt-3 border-t border-stone-200">
+              <div className="flex justify-end gap-3 pt-4 border-t border-[#DCD6CD]">
                 <button
                   type="button"
                   onClick={() => setParticipantModalOpen(false)}
-                  className="px-5 py-2.5 rounded-xl border border-stone-300 text-xs font-bold text-stone-700"
+                  className="px-5 py-3 border border-[#DCD6CD] text-xs uppercase tracking-[0.18em] text-[#5C5852]"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={isBusy}
-                  className="px-6 py-2.5 rounded-xl bg-red-800 hover:bg-red-700 text-white text-xs font-bold shadow cursor-pointer"
+                  className="px-6 py-3 bg-[#181816] hover:bg-[#2C4035] text-[#FAF8F5] text-xs uppercase tracking-[0.18em] font-semibold cursor-pointer"
                 >
-                  {editingParticipantId
-                    ? 'Salvar Alterações'
-                    : 'Adicionar Participante'}
+                  Salvar
                 </button>
               </div>
             </form>
@@ -3243,34 +3462,36 @@ Boas festas! 🎄✨`;
         </div>
       )}
 
-      {/* MODAL SIMPLIFICADO: IMPORTAR PARTICIPANTES VIA CSV (APENAS NOME E TELEFONE) */}
+      {/* MODAL: IMPORTAR PARTICIPANTES VIA CSV */}
       {csvModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-3xl w-full p-6 sm:p-8 shadow-2xl border border-stone-200 space-y-6 my-8 max-h-[92vh] overflow-y-auto">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-stone-200">
+        <div className="fixed inset-0 z-50 bg-[#181816]/60 backdrop-blur-[2px] flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#FAF8F5] border border-[#181816] max-w-3xl w-full p-6 sm:p-10 space-y-6 my-8 max-h-[92vh] overflow-y-auto">
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-[#DCD6CD]">
               <div>
-                <h3 className="text-xl font-extrabold text-stone-900 flex items-center gap-2">
-                  <FileSpreadsheet className="w-6 h-6 text-emerald-800" />
-                  Importar Participantes via CSV
+                <span className="text-[10px] uppercase tracking-[0.25em] text-[#8C6D53] font-bold">
+                  Importação em Lote
+                </span>
+                <h3
+                  style={fontSerifStyle}
+                  className="text-2xl font-semibold text-[#181816] mt-1"
+                >
+                  Importar Arquivo CSV (Nome e Telefone)
                 </h3>
-                <p className="text-xs text-stone-500 mt-0.5">
-                  Basta informar apenas <code>nome,telefone</code>
-                </p>
               </div>
 
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={handleDownloadCsvTemplate}
-                  className="px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                  className="px-4 py-2 border border-[#181816] text-xs uppercase tracking-[0.15em] font-semibold flex items-center gap-1.5 cursor-pointer"
                 >
-                  <Download className="w-4 h-4" />
-                  Baixar Modelo CSV
+                  <Download className="w-3.5 h-3.5" />
+                  Modelo CSV
                 </button>
                 <button
                   type="button"
                   onClick={() => setCsvModalOpen(false)}
-                  className="px-3 py-2 rounded-xl bg-stone-100 text-stone-600 text-xs font-bold"
+                  className="px-3 py-2 border border-[#DCD6CD] text-xs"
                 >
                   ✕
                 </button>
@@ -3280,14 +3501,14 @@ Boas festas! 🎄✨`;
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div
                 onClick={() => fileInputRef.current?.click()}
-                className="p-6 rounded-2xl border-2 border-dashed border-emerald-400 bg-emerald-50/40 hover:bg-emerald-50 flex flex-col items-center justify-center text-center cursor-pointer transition"
+                className="p-6 border border-dashed border-[#8C6D53] bg-[#F3EFEA]/50 hover:bg-[#F3EFEA] flex flex-col items-center justify-center text-center cursor-pointer transition"
               >
-                <Upload className="w-8 h-8 text-emerald-700 mb-2" />
-                <strong className="text-sm text-emerald-950">
-                  Clique para selecionar o arquivo .CSV
+                <Upload className="w-6 h-6 text-[#2C4035] mb-2" />
+                <strong className="text-xs uppercase tracking-[0.18em] text-[#181816]">
+                  Selecionar Arquivo .CSV
                 </strong>
-                <span className="text-xs text-stone-500 mt-1">
-                  Apenas Nome e WhatsApp com DDD
+                <span className="text-xs text-[#5C5852] mt-1">
+                  Colunas: nome,telefone
                 </span>
                 <input
                   ref={fileInputRef}
@@ -3299,8 +3520,8 @@ Boas festas! 🎄✨`;
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase text-stone-600 mb-1">
-                  Ou cole a lista (nome,telefone) aqui:
+                <label className="block text-[11px] uppercase tracking-[0.15em] text-[#5C5852] mb-1">
+                  Ou cole os dados (nome,telefone):
                 </label>
                 <textarea
                   rows={4}
@@ -3312,54 +3533,51 @@ Boas festas! 🎄✨`;
                   placeholder={
                     'nome,telefone\nPedro Henrique,31999999999\nMaria Silva,31988888888'
                   }
-                  className="w-full p-3 rounded-xl border border-stone-300 font-mono text-xs"
+                  className="w-full p-3 bg-[#F3EFEA] border border-[#DCD6CD] font-mono text-xs outline-none"
                 />
               </div>
             </div>
 
             {validatedCsvRows.length > 0 && (
               <div className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-2 p-3.5 rounded-2xl bg-stone-100 border border-stone-200 text-xs">
-                  <div className="flex items-center gap-4">
-                    <span className="font-bold text-stone-800">
-                      Total: {validatedCsvRows.length}
-                    </span>
-                    <span className="font-bold text-emerald-700">
-                      ✅ Válidos:{' '}
-                      {validatedCsvRows.filter((r) => r.isValid).length}
-                    </span>
-                    <span className="font-bold text-red-700">
-                      ⚠️ Erros:{' '}
-                      {validatedCsvRows.filter((r) => !r.isValid).length}
-                    </span>
-                  </div>
+                <div className="flex items-center gap-6 p-3.5 bg-[#F3EFEA] border border-[#DCD6CD] text-xs uppercase tracking-wider">
+                  <span>Total: {validatedCsvRows.length}</span>
+                  <span className="text-[#2C4035] font-bold">
+                    ✓ Válidos:{' '}
+                    {validatedCsvRows.filter((r) => r.isValid).length}
+                  </span>
+                  <span className="text-[#8E3B36] font-bold">
+                    ✕ Com Erro:{' '}
+                    {validatedCsvRows.filter((r) => !r.isValid).length}
+                  </span>
                 </div>
 
-                <div className="overflow-x-auto rounded-2xl border border-stone-200 max-h-72">
+                <div className="overflow-x-auto border border-[#DCD6CD] max-h-64">
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
-                      <tr className="bg-stone-100 border-b border-stone-200 font-bold text-stone-600">
-                        <th className="py-2.5 px-3">Status</th>
-                        <th className="py-2.5 px-3">Nome Completo *</th>
-                        <th className="py-2.5 px-3">WhatsApp (DDD) *</th>
-                        <th className="py-2.5 px-3">Remover</th>
+                      <tr className="bg-[#F3EFEA] border-b border-[#DCD6CD] uppercase tracking-wider text-[10px] text-[#5C5852]">
+                        <th className="py-2.5 px-3">Validação</th>
+                        <th className="py-2.5 px-3">Nome Completo</th>
+                        <th className="py-2.5 px-3">WhatsApp (DDD)</th>
+                        <th className="py-2.5 px-3">Ação</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-stone-100">
+                    <tbody className="divide-y divide-[#DCD6CD]">
                       {validatedCsvRows.map((row) => (
                         <tr
                           key={row.tempId}
-                          className={row.isValid ? 'bg-white' : 'bg-red-50/70'}
+                          className={
+                            row.isValid ? 'bg-[#FAF8F5]' : 'bg-[#8E3B36]/10'
+                          }
                         >
                           <td className="py-2 px-3">
                             {row.isValid ? (
-                              <span className="inline-flex items-center gap-1 text-emerald-700 font-bold">
-                                <CheckCircle className="w-3.5 h-3.5" />
+                              <span className="text-[#2C4035] font-bold">
                                 OK
                               </span>
                             ) : (
-                              <span className="text-red-700 font-bold block">
-                                ⚠️ {row.errorText}
+                              <span className="text-[#8E3B36] font-semibold">
+                                {row.errorText}
                               </span>
                             )}
                           </td>
@@ -3374,7 +3592,7 @@ Boas festas! 🎄✨`;
                                   e.target.value
                                 )
                               }
-                              className="w-full px-2.5 py-1.5 rounded border border-stone-300"
+                              className="w-full px-2 py-1 bg-[#FAF8F5] border border-[#DCD6CD]"
                             />
                           </td>
                           <td className="py-2 px-3">
@@ -3388,16 +3606,16 @@ Boas festas! 🎄✨`;
                                   e.target.value
                                 )
                               }
-                              className="w-full px-2.5 py-1.5 rounded border border-stone-300 font-mono"
+                              className="w-full px-2 py-1 bg-[#FAF8F5] border border-[#DCD6CD] font-mono"
                             />
                           </td>
                           <td className="py-2 px-3">
                             <button
                               type="button"
                               onClick={() => handleRemoveCsvRow(row.tempId)}
-                              className="text-red-700 hover:underline font-bold"
+                              className="text-[#8E3B36] underline"
                             >
-                              Excluir
+                              Remover
                             </button>
                           </td>
                         </tr>
@@ -3408,11 +3626,11 @@ Boas festas! 🎄✨`;
               </div>
             )}
 
-            <div className="flex justify-end gap-3 pt-4 border-t border-stone-200">
+            <div className="flex justify-end gap-3 pt-4 border-t border-[#DCD6CD]">
               <button
                 type="button"
                 onClick={() => setCsvModalOpen(false)}
-                className="px-5 py-2.5 rounded-xl border border-stone-300 text-xs font-bold text-stone-700"
+                className="px-5 py-3 border border-[#DCD6CD] text-xs uppercase tracking-[0.18em]"
               >
                 Cancelar
               </button>
@@ -3423,45 +3641,50 @@ Boas festas! 🎄✨`;
                   validatedCsvRows.filter((r) => r.isValid).length === 0
                 }
                 onClick={handleConfirmCsvImport}
-                className="px-6 py-2.5 rounded-xl bg-emerald-800 hover:bg-emerald-700 disabled:bg-stone-300 text-white text-xs font-bold shadow cursor-pointer"
+                className="px-6 py-3 bg-[#2C4035] hover:bg-[#181816] disabled:bg-[#DCD6CD] text-[#FAF8F5] text-xs uppercase tracking-[0.18em] font-semibold cursor-pointer"
               >
-                Confirmar Importação (
-                {validatedCsvRows.filter((r) => r.isValid).length} Válidos)
+                Importar ({validatedCsvRows.filter((r) => r.isValid).length}{' '}
+                Válidos)
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL: REVISAR MENSAGEM PERSONALIZADA DO WHATSAPP */}
+      {/* MODAL: PRÉVIA DA MENSAGEM DO WHATSAPP */}
       {previewMessageModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-stone-200 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-stone-200">
-              <h3 className="text-lg font-extrabold text-stone-900">
-                Prévia da Mensagem • {previewMessageModal.participantName}
+        <div className="fixed inset-0 z-50 bg-[#181816]/60 backdrop-blur-[2px] flex items-center justify-center p-4">
+          <div className="bg-[#FAF8F5] border border-[#181816] max-w-lg w-full p-6 sm:p-10 space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-[#DCD6CD]">
+              <h3
+                style={fontSerifStyle}
+                className="text-2xl font-semibold text-[#181816]"
+              >
+                Mensagem • {previewMessageModal.participantName}
               </h3>
               <button
                 type="button"
                 onClick={() => setPreviewMessageModal(null)}
-                className="text-stone-400 hover:text-stone-700 font-bold"
+                className="text-sm text-[#5C5852]"
               >
                 ✕
               </button>
             </div>
 
-            <pre className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs sm:text-sm text-stone-800 whitespace-pre-wrap font-sans leading-relaxed">
+            <pre className="p-5 bg-[#F3EFEA] border border-[#DCD6CD] text-xs sm:text-sm text-[#181816] whitespace-pre-wrap font-sans leading-relaxed">
               {buildWhatsAppMessage(
                 previewMessageModal.participantName,
-                previewMessageModal.token
+                eventName,
+                buildParticipantLink(previewMessageModal.token),
+                customWaTemplate
               )}
             </pre>
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-3 pt-2">
               <button
                 type="button"
                 onClick={() => setPreviewMessageModal(null)}
-                className="px-4 py-2 rounded-xl border border-stone-300 text-xs font-bold"
+                className="px-5 py-2.5 border border-[#DCD6CD] text-xs uppercase tracking-[0.18em]"
               >
                 Fechar
               </button>
@@ -3472,10 +3695,9 @@ Boas festas! 🎄✨`;
                   setPreviewMessageModal(null);
                   handleSendDirectWhatsApp(tk, true);
                 }}
-                className="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                className="px-6 py-2.5 bg-[#2C4035] hover:bg-[#181816] text-[#FAF8F5] text-xs uppercase tracking-[0.18em] font-semibold cursor-pointer"
               >
-                <Send className="w-3.5 h-3.5" />
-                Abrir no WhatsApp Agora
+                Abrir no WhatsApp
               </button>
             </div>
           </div>
@@ -3484,30 +3706,35 @@ Boas festas! 🎄✨`;
 
       {/* MODAL DE CONFIRMAÇÃO ADMINISTRATIVA */}
       {confirmModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-stone-200 space-y-4">
-            <div className="flex items-center gap-3 text-red-800">
-              <Gift className="w-7 h-7 shrink-0" />
-              <h3 className="text-lg font-extrabold">{confirmModal.title}</h3>
-            </div>
-            <p className="text-xs sm:text-sm text-stone-600 leading-relaxed">
+        <div className="fixed inset-0 z-50 bg-[#181816]/60 backdrop-blur-[2px] flex items-center justify-center p-4">
+          <div className="bg-[#FAF8F5] border border-[#181816] max-w-md w-full p-6 sm:p-10 space-y-5">
+            <span className="text-[10px] uppercase tracking-[0.25em] text-[#8E3B36] font-bold">
+              Confirmação de Segurança
+            </span>
+            <h3
+              style={fontSerifStyle}
+              className="text-2xl font-semibold text-[#181816]"
+            >
+              {confirmModal.title}
+            </h3>
+            <p className="text-xs sm:text-sm text-[#5C5852] leading-relaxed">
               {confirmModal.description}
             </p>
-            <div className="flex justify-end gap-2.5 pt-3 border-t border-stone-200">
+            <div className="flex justify-end gap-3 pt-4 border-t border-[#DCD6CD]">
               <button
                 type="button"
                 onClick={() => setConfirmModal(null)}
-                className="px-4 py-2.5 rounded-xl border border-stone-300 text-xs font-bold text-stone-700"
+                className="px-5 py-3 border border-[#DCD6CD] text-xs uppercase tracking-[0.18em]"
               >
                 Cancelar
               </button>
               <button
                 type="button"
                 onClick={confirmModal.onConfirm}
-                className={`px-5 py-2.5 rounded-xl text-white text-xs font-bold cursor-pointer ${
+                className={`px-6 py-3 text-[#FAF8F5] text-xs uppercase tracking-[0.18em] font-semibold cursor-pointer ${
                   confirmModal.danger
-                    ? 'bg-red-800 hover:bg-red-700'
-                    : 'bg-emerald-800 hover:bg-emerald-700'
+                    ? 'bg-[#8E3B36] hover:bg-[#181816]'
+                    : 'bg-[#2C4035] hover:bg-[#181816]'
                 }`}
               >
                 {confirmModal.confirmText}
