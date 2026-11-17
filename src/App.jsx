@@ -2162,8 +2162,8 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* BOTÕES DE AÇÃO: ABRIR ABA DE DAR DICAS OU ROLAR PARA VER DICAS DO SORTEADO */}
-                <div className="grid grid-cols-1 gap-2.5 pt-1">
+                {/* BOTÃO DE AÇÃO: ABRIR ABA DE DAR DICAS */}
+                <div className="pt-1">
                   <button
                     type="button"
                     onClick={openMyHintsTab}
@@ -2175,19 +2175,6 @@ export default function App() {
                         : '🎁 DAR MINHAS DICAS DE PRESENTE'}
                     </span>
                     <ArrowRight className="w-4 h-4 text-[#8C6D53]" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={scrollToFriendHints}
-                    className="w-full py-3 px-4 border border-[#DCD6CD] bg-[#F3EFEA]/70 hover:bg-[#F3EFEA] text-[#181816] text-xs font-semibold flex items-center justify-between transition cursor-pointer"
-                  >
-                    <span>
-                      Ver dicas de presente de{' '}
-                      {isSimulatingParticipant ? 'seu sorteado' : drawnFirstName}{' '}
-                      ↓
-                    </span>
-                    <ChevronDown className="w-4 h-4 text-[#8C6D53] animate-bounce" />
                   </button>
                 </div>
               </section>
@@ -2310,23 +2297,6 @@ export default function App() {
             </>
           )}
         </main>
-
-        {/* INDICADOR FLUTUANTE DE SCROLL NO CELULAR (SOME ASSIM QUE A PESSOA ROLA A TELA OU ABRE A ABA DE DICAS) */}
-        {currentParticipantTokenDoc &&
-          !isDecryptingLink &&
-          !myHintsModalOpen &&
-          !hasScrolledMobile && (
-            <div className="fixed bottom-3 inset-x-0 z-40 flex justify-center px-4 pointer-events-none">
-              <button
-                type="button"
-                onClick={scrollToFriendHints}
-                className="pointer-events-auto inline-flex items-center gap-2 px-4 py-2.5 bg-[#181816] text-[#FAF8F5] border border-[#8C6D53] shadow-lg text-xs font-medium tracking-wide cursor-pointer"
-              >
-                <span>Role para baixo para ver as dicas de presente</span>
-                <ChevronDown className="w-4 h-4 text-[#8C6D53] animate-bounce" />
-              </button>
-            </div>
-          )}
       </div>
     );
   }
