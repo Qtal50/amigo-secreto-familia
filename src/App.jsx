@@ -388,8 +388,7 @@ Quer descobrir quem você tirou?
 
 {link}
 
-Depois, você também poderá informar algumas sugestões de presentes que gostaria de ganhar, para ajudar seu amigo secreto na escolha.
-Este acesso é pessoal. Guarde este link com você e boas festas! ✨`;
+> Dentro do site, você também poderá deixar dicas de presentes que gostaria de ganhar e consultar as sugestões do seu amigo secreto. Boas festas! ❤️🎅`;
 
 /**
  * Monta a mensagem personalizada do WhatsApp substituindo as variáveis {nome}, {evento} e {link}
