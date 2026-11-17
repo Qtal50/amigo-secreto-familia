@@ -49,6 +49,7 @@ import {
   ArrowRight,
   ArrowUpRight,
   MessageSquare,
+  ChevronDown,
 } from 'lucide-react';
 
 // ============================================================================
@@ -367,7 +368,8 @@ function hasFilledGiftHints(p) {
       (p.shoeSize && p.shoeSize.trim()) ||
       (p.shirtSize && p.shirtSize.trim()) ||
       (p.pantsSize && p.pantsSize.trim()) ||
-      (p.observations && p.observations.trim())
+      (p.observations && p.observations.trim()) ||
+      (p.notes && p.notes.trim())
   );
 }
 
@@ -596,6 +598,8 @@ export default function App() {
   // Estados da Página Individual do Participante (Ambiente 2 - Acesso Direto Sem Código)
   const [decryptedResult, setDecryptedResult] = useState(null);
   const [isDecryptingLink, setIsDecryptingLink] = useState(false);
+  const [isDrawnNameVisible, setIsDrawnNameVisible] = useState(true);
+  const [hasScrolledMobile, setHasScrolledMobile] = useState(false);
   const [myHintsModalOpen, setMyHintsModalOpen] = useState(false);
   const [myWant, setMyWant] = useState('');
   const [myDontWant, setMyDontWant] = useState('');
@@ -604,6 +608,10 @@ export default function App() {
   const [myShoe, setMyShoe] = useState('');
   const [myNotes, setMyNotes] = useState('');
   const [savingMyHints, setSavingMyHints] = useState(false);
+
+  const friendHintsRef = useRef(null);
+  const myHintsSectionRef = useRef(null);
+  const myWantInputRef = useRef(null);
 
   // Modais e Notificações Globais
   const [toast, setToast] = useState(null);
@@ -821,6 +829,37 @@ export default function App() {
       ) || null
     );
   }, [participants, currentParticipantTokenDoc]);
+
+  // Preenche automaticamente o formulário de dicas com os dados atuais do participante
+  useEffect(() => {
+    if (myOwnParticipantDoc) {
+      setMyWant(myOwnParticipantDoc.wantToGet || '');
+      setMyDontWant(myOwnParticipantDoc.dontWantToGet || '');
+      setMyShirt(myOwnParticipantDoc.shirtSize || '');
+      setMyPants(myOwnParticipantDoc.pantsSize || '');
+      setMyShoe(myOwnParticipantDoc.shoeSize || '');
+      setMyNotes(
+        myOwnParticipantDoc.observations || myOwnParticipantDoc.notes || ''
+      );
+    }
+  }, [myOwnParticipantDoc?.id, myOwnParticipantDoc?.hintsUpdatedAt]);
+
+  // Detecta rolagem na tela do participante para ocultar o indicador flutuante inferior
+  useEffect(() => {
+    if (!activeParticipantToken) return;
+    setHasScrolledMobile(false);
+
+    const handleScroll = () => {
+      if (window.scrollY > 45) {
+        setHasScrolledMobile(true);
+      } else {
+        setHasScrolledMobile(false);
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [activeParticipantToken]);
 
   // Documento em TEMPO REAL da PESSOA SORTEADA (sempre que ela atualizar as dicas, reflete aqui na hora)
   const drawnPersonLatestData = useMemo(() => {
@@ -1415,8 +1454,29 @@ export default function App() {
     setMyShirt(myOwnParticipantDoc?.shirtSize || '');
     setMyPants(myOwnParticipantDoc?.pantsSize || '');
     setMyShoe(myOwnParticipantDoc?.shoeSize || '');
-    setMyNotes(myOwnParticipantDoc?.observations || '');
+    setMyNotes(
+      myOwnParticipantDoc?.observations || myOwnParticipantDoc?.notes || ''
+    );
     setMyHintsModalOpen(true);
+  };
+
+  const scrollToFriendHints = () => {
+    setHasScrolledMobile(true);
+    friendHintsRef.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    });
+  };
+
+  const scrollToMyHintsAndFocus = () => {
+    setHasScrolledMobile(true);
+    myHintsSectionRef.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    });
+    setTimeout(() => {
+      myWantInputRef.current?.focus();
+    }, 450);
   };
 
   const handleSaveMyGiftHints = async (e) => {
@@ -1442,6 +1502,7 @@ export default function App() {
           pantsSize: myPants.trim(),
           shoeSize: myShoe.trim(),
           observations: myNotes.trim(),
+          notes: myNotes.trim(),
           hintsUpdatedAt: new Date().toISOString(),
         },
         { merge: true }
@@ -1449,7 +1510,7 @@ export default function App() {
 
       setMyHintsModalOpen(false);
       showToast(
-        'Suas preferências foram salvas e já estão visíveis para quem tirou você.'
+        'Suas dicas foram salvas e já estão visíveis para quem tirou você!'
       );
     } catch (err) {
       console.error('Erro ao salvar dicas:', err);
@@ -1463,300 +1524,10 @@ export default function App() {
   // 11. MOTOR DE DISPARO 100% AUTOMÁTICO DE WHATSAPP (ULTRAMSG, Z-API, EVOLUTION)
   // ============================================================================
 
-  const sendWhatsAppViaApiGateway = async (phone, messageText, tokenDoc) => {
-    const formattedPhone = formatPhoneForWhatsApp(phone);
-
-    if (waProvider === 'ultramsg') {
-      if (!waInstanceId.trim() || !waApiToken.trim()) {
-        throw new Error('Preencha o Instance ID e o Token da UltraMsg.');
-      }
-      const rawInst = waInstanceId.trim();
-      const instancePath = rawInst.startsWith('instance')
-        ? rawInst
-        : `instance${rawInst}`;
-      const url = `https://api.ultramsg.com/${instancePath}/messages/chat`;
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: waApiToken.trim(),
-          to: `+${formattedPhone}`,
-          body: messageText,
-        }),
-      });
-      if (!res.ok) {
-        const errBody = await res.text();
-        throw new Error(`UltraMsg HTTP ${res.status}: ${errBody.slice(0, 100)}`);
-      }
-      return true;
-    }
-
-    if (waProvider === 'zapi') {
-      if (!waInstanceId.trim() || !waApiToken.trim()) {
-        throw new Error('Preencha o ID da Instância e o Token da Z-API.');
-      }
-      const url = `https://api.z-api.io/instances/${waInstanceId.trim()}/token/${waApiToken.trim()}/send-text`;
-      const headers = { 'Content-Type': 'application/json' };
-      if (waClientToken.trim()) {
-        headers['Client-Token'] = waClientToken.trim();
-      }
-      const res = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          phone: formattedPhone,
-          message: messageText,
-        }),
-      });
-      if (!res.ok) {
-        const errBody = await res.text();
-        throw new Error(`Z-API HTTP ${res.status}: ${errBody.slice(0, 100)}`);
-      }
-      return true;
-    }
-
-    if (waProvider === 'evolution') {
-      if (!waInstanceUrl.trim() || !waInstanceId.trim() || !waApiToken.trim()) {
-        throw new Error(
-          'Preencha a URL do Servidor, Nome da Instância e API Key da Evolution API.'
-        );
-      }
-      const baseUrl = waInstanceUrl.trim().replace(/\/$/, '');
-      const url = `${baseUrl}/message/sendText/${encodeURIComponent(
-        waInstanceId.trim()
-      )}`;
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          apikey: waApiToken.trim(),
-        },
-        body: JSON.stringify({
-          number: formattedPhone,
-          text: messageText,
-        }),
-      });
-      if (!res.ok) {
-        const errBody = await res.text();
-        throw new Error(
-          `Evolution API HTTP ${res.status}: ${errBody.slice(0, 100)}`
-        );
-      }
-      return true;
-    }
-
-    if (waProvider === 'webhook') {
-      if (!waInstanceUrl.trim()) {
-        throw new Error('Informe a URL do Webhook / API de disparo.');
-      }
-      const res = await fetch(waInstanceUrl.trim(), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(waApiToken.trim()
-            ? { Authorization: `Bearer ${waApiToken.trim()}` }
-            : {}),
-        },
-        body: JSON.stringify({
-          phone: formattedPhone,
-          participantName: tokenDoc.participantName,
-          link: buildParticipantLink(tokenDoc.token),
-          message: messageText,
-        }),
-      });
-      if (!res.ok) {
-        throw new Error(`Webhook HTTP ${res.status}`);
-      }
-      return true;
-    }
-
-    throw new Error('Selecione um provedor de disparo automático válido.');
-  };
-
-  const handleStartAutomaticBatchDispatch = async (onlyPending = true) => {
-    const queue = onlyPending
-      ? accessTokens.filter((t) => t.whatsappStatus !== 'sent')
-      : accessTokens;
-
-    if (queue.length === 0) {
-      showToast('Todos os participantes já receberam seus links no WhatsApp.');
-      return;
-    }
-
-    setIsAutoDispatching(true);
-    abortDispatchRef.current = false;
-    setDispatchProgress({ current: 0, total: queue.length });
-    setDispatchLogs([
-      `🚀 Iniciando disparo automático para ${queue.length} familiar(es)...`,
-    ]);
-
-    let successCount = 0;
-    let errorCount = 0;
-
-    for (let i = 0; i < queue.length; i++) {
-      if (abortDispatchRef.current) {
-        setDispatchLogs((prev) => [
-          `⏹️ Disparo pausado pelo administrador.`,
-          ...prev,
-        ]);
-        break;
-      }
-
-      const tokenDoc = queue[i];
-      setDispatchProgress({ current: i + 1, total: queue.length });
-
-      const link = buildParticipantLink(tokenDoc.token);
-      const message = buildWhatsAppMessage(
-        tokenDoc.participantName,
-        eventName,
-        link,
-        customWaTemplate
-      );
-
-      setDispatchLogs((prev) => [
-        `📤 [${i + 1}/${queue.length}] Enviando para ${
-          tokenDoc.participantName
-        } (${formatPhoneDisplay(tokenDoc.participantPhone)})...`,
-        ...prev,
-      ]);
-
-      try {
-        await sendWhatsAppViaApiGateway(
-          tokenDoc.participantPhone,
-          message,
-          tokenDoc
-        );
-
-        await updateDoc(
-          doc(
-            db,
-            'artifacts',
-            appId,
-            'public',
-            'data',
-            'access_tokens',
-            tokenDoc.id
-          ),
-          {
-            whatsappStatus: 'sent',
-            whatsappSentAt: new Date().toISOString(),
-          }
-        );
-
-        successCount++;
-        setDispatchLogs((prev) => [
-          `✅ Entregue com sucesso para ${tokenDoc.participantName}!`,
-          ...prev,
-        ]);
-      } catch (err) {
-        errorCount++;
-        await updateDoc(
-          doc(
-            db,
-            'artifacts',
-            appId,
-            'public',
-            'data',
-            'access_tokens',
-            tokenDoc.id
-          ),
-          {
-            whatsappStatus: 'error',
-            lastError: err.message,
-          }
-        );
-
-        setDispatchLogs((prev) => [
-          `❌ Falha ao enviar para ${tokenDoc.participantName}: ${err.message}`,
-          ...prev,
-        ]);
-      }
-
-      if (i < queue.length - 1 && !abortDispatchRef.current) {
-        await new Promise((r) => setTimeout(r, waDelaySeconds * 1000));
-      }
-    }
-
-    setIsAutoDispatching(false);
-    showToast(
-      `Disparo finalizado: ${successCount} enviado(s)${
-        errorCount > 0 ? ` e ${errorCount} falha(s)` : ''
-      }.`,
-      errorCount > 0 && successCount === 0 ? 'error' : 'success'
-    );
-  };
-
-  const handleSendDirectWhatsApp = async (tokenDoc, forceWaMe = false) => {
-    const link = buildParticipantLink(tokenDoc.token);
-    const message = buildWhatsAppMessage(
-      tokenDoc.participantName,
-      eventName,
-      link,
-      customWaTemplate
-    );
-
-    if (!forceWaMe && waProvider !== 'wame_assist' && waApiToken.trim()) {
-      try {
-        setIsBusy(true);
-        await sendWhatsAppViaApiGateway(
-          tokenDoc.participantPhone,
-          message,
-          tokenDoc
-        );
-        await updateDoc(
-          doc(
-            db,
-            'artifacts',
-            appId,
-            'public',
-            'data',
-            'access_tokens',
-            tokenDoc.id
-          ),
-          {
-            whatsappStatus: 'sent',
-            whatsappSentAt: new Date().toISOString(),
-          }
-        );
-        showToast(
-          `Mensagem enviada via API para ${tokenDoc.participantName}.`
-        );
-      } catch (err) {
-        showToast(`Erro na API: ${err.message}`, 'error');
-      } finally {
-        setIsBusy(false);
-      }
-      return;
-    }
-
-    const formattedPhone = formatPhoneForWhatsApp(tokenDoc.participantPhone);
-    const encodedMsg = encodeURIComponent(message);
-    window.open(
-      `https://wa.me/${formattedPhone}?text=${encodedMsg}`,
-      '_blank',
-      'noopener,noreferrer'
-    );
-
-    await updateDoc(
-      doc(
-        db,
-        'artifacts',
-        appId,
-        'public',
-        'data',
-        'access_tokens',
-        tokenDoc.id
-      ),
-      {
-        whatsappStatus: 'sent',
-        whatsappSentAt: new Date().toISOString(),
-      }
-    );
-  };
-
   const handleSaveGatewayConfig = async (e) => {
-    if (e) e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
     if (!firebaseUser) return;
+
     setIsBusy(true);
     try {
       await setDoc(
@@ -1770,9 +1541,11 @@ export default function App() {
           'main_config'
         ),
         {
-          eventName: eventTitleInput.trim() || 'Amigo Secreto da Família 2026',
+          eventName:
+            eventTitleInput.trim() || 'Amigo Secreto da Família 2026',
           eventDate: eventDateInput,
           suggestedValue: eventValueInput.trim(),
+          urlFormatPreference,
           waProvider,
           waInstanceUrl: waInstanceUrl.trim(),
           waInstanceId: waInstanceId.trim(),
@@ -1780,93 +1553,332 @@ export default function App() {
           waClientToken: waClientToken.trim(),
           customWaTemplate:
             customWaTemplate.trim() || DEFAULT_WHATSAPP_TEMPLATE,
-          urlFormatPreference,
+          updatedAt: new Date().toISOString(),
         },
         { merge: true }
       );
-      showToast('Configurações e modelo de mensagem salvos.');
+      showToast('Configurações e mensagem do WhatsApp salvas com sucesso.');
     } catch (err) {
+      console.error('Erro ao salvar configurações:', err);
       showToast('Erro ao salvar configurações.', 'error');
     } finally {
       setIsBusy(false);
     }
   };
 
-  const handleLoadDemoParticipants = async () => {
-    if (drawStatus === 'drawn') {
-      showToast(
-        'Reinicie o sorteio atual caso queira recarregar a lista de exemplo.',
-        'error'
-      );
+  const sendSingleApiWhatsAppMessage = async (tokenDoc) => {
+    const phoneWithCountry = formatPhoneForWhatsApp(tokenDoc.participantPhone);
+    const link = buildParticipantLink(tokenDoc.token);
+    const messageText = buildWhatsAppMessage(
+      tokenDoc.participantName,
+      eventName,
+      link,
+      customWaTemplate
+    );
+
+    if (waProvider === 'ultramsg') {
+      const rawId = waInstanceId.trim();
+      if (!rawId || !waApiToken.trim()) {
+        throw new Error(
+          'Preencha o Instance ID e o Token da UltraMsg antes de disparar.'
+        );
+      }
+      const instancePath = rawId.startsWith('instance')
+        ? rawId
+        : `instance${rawId}`;
+      const endpoint = `https://api.ultramsg.com/${instancePath}/messages/chat`;
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: waApiToken.trim(),
+          to: `+${phoneWithCountry}`,
+          body: messageText,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (
+        !response.ok ||
+        data.error ||
+        (data.sent && String(data.sent) !== 'true')
+      ) {
+        throw new Error(
+          `UltraMsg: ${JSON.stringify(
+            data.error || data || response.statusText
+          )}`
+        );
+      }
+      return true;
+    }
+
+    if (waProvider === 'zapi') {
+      const rawUrl = waInstanceUrl.trim();
+      const endpoint =
+        rawUrl && rawUrl.startsWith('http')
+          ? rawUrl
+          : `https://api.z-api.io/instances/${waInstanceId.trim()}/token/${waApiToken.trim()}/send-text`;
+
+      const headers = { 'Content-Type': 'application/json' };
+      if (waClientToken.trim()) {
+        headers['Client-Token'] = waClientToken.trim();
+      }
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          phone: phoneWithCountry,
+          message: messageText,
+        }),
+      });
+
+      if (!response.ok) {
+        const errBody = await response.text().catch(() => '');
+        throw new Error(`Z-API HTTP ${response.status}: ${errBody}`);
+      }
+      return true;
+    }
+
+    if (waProvider === 'evolution') {
+      const baseUrl = (waInstanceUrl.trim() || '').replace(/\/$/, '');
+      if (!baseUrl || !waInstanceId.trim() || !waApiToken.trim()) {
+        throw new Error(
+          'Preencha a URL do servidor, Nome da Instância e API Key da Evolution API.'
+        );
+      }
+      const endpoint = `${baseUrl}/message/sendText/${encodeURIComponent(
+        waInstanceId.trim()
+      )}`;
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: waApiToken.trim(),
+        },
+        body: JSON.stringify({
+          number: phoneWithCountry,
+          text: messageText,
+        }),
+      });
+
+      if (!response.ok) {
+        const errBody = await response.text().catch(() => '');
+        throw new Error(`Evolution HTTP ${response.status}: ${errBody}`);
+      }
+      return true;
+    }
+
+    if (waProvider === 'webhook') {
+      const endpoint = waInstanceUrl.trim();
+      if (!endpoint) {
+        throw new Error('Informe a URL do Webhook para disparo.');
+      }
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: tokenDoc.participantName,
+          phone: phoneWithCountry,
+          link,
+          message: messageText,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Webhook HTTP ${response.status}`);
+      }
+      return true;
+    }
+
+    // Modo assistido wa.me
+    const waUrl = `https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(
+      messageText
+    )}`;
+    window.open(waUrl, '_blank', 'noopener,noreferrer');
+    return true;
+  };
+
+  const handleStartAutomaticBatchDispatch = async (onlyPending = true) => {
+    const queue = onlyPending
+      ? accessTokens.filter((t) => t.whatsappStatus !== 'sent')
+      : [...accessTokens];
+
+    const targetList = queue.length > 0 ? queue : [...accessTokens];
+    if (targetList.length === 0) {
+      showToast('Nenhum participante disponível para disparo.', 'error');
       return;
     }
 
-    setIsBusy(true);
-    try {
-      const demoList = [
-        { id: 'demo_p1', fullName: 'Pedro Henrique', phone: '31999999999' },
-        { id: 'demo_p2', fullName: 'Maria Silva', phone: '31988888888' },
-        { id: 'demo_p3', fullName: 'João Santos', phone: '31977777777' },
-        { id: 'demo_p4', fullName: 'Vó Ana Clara', phone: '31966666666' },
-      ];
+    abortDispatchRef.current = false;
+    setIsAutoDispatching(true);
+    setDispatchProgress({ current: 0, total: targetList.length });
+    setDispatchLogs([
+      `🚀 Iniciando disparo automático para ${targetList.length} familiar(es)...`,
+    ]);
 
-      for (const item of demoList) {
-        await setDoc(
+    for (let i = 0; i < targetList.length; i++) {
+      if (abortDispatchRef.current) {
+        setDispatchLogs((prev) => [
+          '⏸️ Fila pausada pelo administrador.',
+          ...prev,
+        ]);
+        break;
+      }
+
+      const tk = targetList[i];
+      setDispatchProgress({ current: i + 1, total: targetList.length });
+      setDispatchLogs((prev) => [
+        `📤 [${i + 1}/${targetList.length}] Enviando para ${
+          tk.participantName
+        } (${formatPhoneDisplay(tk.participantPhone)})...`,
+        ...prev,
+      ]);
+
+      try {
+        await sendSingleApiWhatsAppMessage(tk);
+        await updateDoc(
           doc(
             db,
             'artifacts',
             appId,
             'public',
             'data',
-            'participants',
-            item.id
+            'access_tokens',
+            tk.id
           ),
           {
-            ...item,
-            active: true,
-            updatedAt: new Date().toISOString(),
-          },
-          { merge: true }
+            whatsappStatus: 'sent',
+            whatsappSentAt: new Date().toISOString(),
+          }
         );
+        setDispatchLogs((prev) => [
+          `✅ Entregue com sucesso para ${tk.participantName}!`,
+          ...prev,
+        ]);
+      } catch (err) {
+        console.error('Erro no envio individual:', err);
+        await updateDoc(
+          doc(
+            db,
+            'artifacts',
+            appId,
+            'public',
+            'data',
+            'access_tokens',
+            tk.id
+          ),
+          {
+            whatsappStatus: 'error',
+            lastError: err.message,
+          }
+        );
+        setDispatchLogs((prev) => [
+          `❌ Falha ao enviar para ${tk.participantName}: ${err.message}`,
+          ...prev,
+        ]);
       }
 
+      if (i < targetList.length - 1 && !abortDispatchRef.current) {
+        await new Promise((r) => setTimeout(r, waDelaySeconds * 1000));
+      }
+    }
+
+    setIsAutoDispatching(false);
+    showToast('Processamento da fila de WhatsApp finalizado.');
+  };
+
+  const handleSendDirectWhatsApp = async (tk, openWindow = true) => {
+    const phoneWithCountry = formatPhoneForWhatsApp(tk.participantPhone);
+    const link = buildParticipantLink(tk.token);
+    const msg = buildWhatsAppMessage(
+      tk.participantName,
+      eventName,
+      link,
+      customWaTemplate
+    );
+
+    if (openWindow) {
+      const waUrl = `https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(
+        msg
+      )}`;
+      window.open(waUrl, '_blank', 'noopener,noreferrer');
+    }
+
+    try {
+      await updateDoc(
+        doc(db, 'artifacts', appId, 'public', 'data', 'access_tokens', tk.id),
+        {
+          whatsappStatus: 'sent',
+          whatsappSentAt: new Date().toISOString(),
+        }
+      );
+      showToast(`Envio para ${tk.participantName} registrado.`);
+    } catch (err) {
+      console.error('Erro ao atualizar status WhatsApp:', err);
+    }
+  };
+
+  const handleLoadDemoParticipants = async () => {
+    if (!firebaseUser) return;
+    setIsBusy(true);
+    try {
+      const samples = [
+        { fullName: 'Pedro Henrique', phone: '31999991111' },
+        { fullName: 'Maria Clara Silva', phone: '31999992222' },
+        { fullName: 'João Vitor Santos', phone: '31999993333' },
+        { fullName: 'Vovó Helena', phone: '31999994444' },
+      ];
+
+      for (const item of samples) {
+        const partId = `part_${Date.now()}_${Math.random()
+          .toString(36)
+          .substring(2, 6)}`;
+        await setDoc(
+          doc(db, 'artifacts', appId, 'public', 'data', 'participants', partId),
+          {
+            id: partId,
+            fullName: item.fullName,
+            phone: item.phone,
+            active: true,
+            updatedAt: new Date().toISOString(),
+          }
+        );
+      }
       showToast('4 participantes de exemplo adicionados.');
     } catch (err) {
-      showToast('Erro ao carregar exemplos.', 'error');
+      console.error('Erro ao carregar exemplos:', err);
     } finally {
       setIsBusy(false);
     }
   };
 
-  // Estilos tipográficos inline para garantir precisão editorial Swiss Design
+  // ============================================================================
+  // 12. DEFINIÇÕES TIPOGRÁFICAS EDITORIAIS E TELA DE CARREGAMENTO
+  // ============================================================================
+
+  const fontSansStyle = {
+    fontFamily:
+      "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif",
+  };
+
   const fontSerifStyle = {
     fontFamily: "'Cormorant Garamond', Georgia, serif",
   };
-  const fontSansStyle = {
-    fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif",
-  };
-
-  // ============================================================================
-  // 12. TELA DE CARREGAMENTO INICIAL (ESTILO EDITORIAL)
-  // ============================================================================
 
   if (loadingFirebase) {
     return (
       <div
         style={fontSansStyle}
-        className="min-h-screen bg-[#FAF8F5] text-[#181816] flex flex-col items-center justify-center p-8"
+        className="min-h-screen bg-[#FAF8F5] text-[#181816] flex items-center justify-center p-6"
       >
-        <div className="max-w-md w-full border border-[#DCD6CD] bg-[#FAF8F5] p-10 text-center space-y-6">
-          <ArchitecturalLogoMark className="w-10 h-10 mx-auto text-[#181816]" />
-          <div className="w-8 h-[1px] bg-[#8C6D53] mx-auto" />
-          <h1
-            style={fontSerifStyle}
-            className="text-3xl font-semibold tracking-tight text-[#181816]"
-          >
-            Amigo Secreto da Família
-          </h1>
-          <p className="text-xs uppercase tracking-[0.25em] text-[#5C5852]">
-            Sincronizando Arquivo Editorial...
+        <div className="border border-[#DCD6CD] bg-[#F3EFEA] px-8 py-6 text-center space-y-2">
+          <div className="w-8 h-[1px] bg-[#8C6D53] mx-auto animate-pulse" />
+          <p className="text-xs uppercase tracking-[0.22em] text-[#5C5852]">
+            Carregando Amigo Secreto...
           </p>
         </div>
       </div>
@@ -1874,54 +1886,55 @@ export default function App() {
   }
 
   // ============================================================================
-  // 13. AMBIENTE 2: PÁGINA EXCLUSIVA DO PARTICIPANTE (ACESSO DIRETO + DICAS)
+  // 13. AMBIENTE 2: PÁGINA EXCLUSIVA DO PARTICIPANTE (MOBILE-FIRST & ULTRA CLEAN)
   // ============================================================================
 
   if (activeParticipantToken) {
     const drawnName =
       drawnPersonLatestData?.fullName || decryptedResult?.receiverName || '...';
+    const drawnFirstName = String(drawnName).trim().split(' ')[0] || 'Amigo';
+    const myFirstName =
+      String(currentParticipantTokenDoc?.participantName || '')
+        .trim()
+        .split(' ')[0] || 'Familiar';
     const drawnHasHints = hasFilledGiftHints(drawnPersonLatestData);
     const iHaveFilledMyHints = hasFilledGiftHints(myOwnParticipantDoc);
+    const drawnNotes =
+      drawnPersonLatestData?.observations ||
+      drawnPersonLatestData?.notes ||
+      '';
 
     return (
       <div
         style={fontSansStyle}
-        className="min-h-screen bg-[#FAF8F5] text-[#181816] flex flex-col justify-between selection:bg-[#2C4035] selection:text-[#FAF8F5]"
+        className="min-h-screen bg-[#FAF8F5] text-[#181816] flex flex-col selection:bg-[#2C4035] selection:text-[#FAF8F5] pb-16"
       >
         {/* Notificação Toast Editorial */}
         {toast && (
-          <div className="fixed top-6 right-6 z-50 max-w-md">
+          <div className="fixed top-4 inset-x-4 sm:left-auto sm:right-6 z-50 max-w-sm mx-auto">
             <div
-              className={`flex items-center gap-3 px-6 py-4 border ${
+              className={`flex items-center gap-3 px-4 py-3.5 border shadow-lg ${
                 toast.type === 'error'
                   ? 'bg-[#8E3B36] text-[#FAF8F5] border-[#181816]'
                   : 'bg-[#181816] text-[#FAF8F5] border-[#2C4035]'
               }`}
             >
               <span className="w-2 h-2 bg-[#8C6D53] shrink-0" />
-              <p className="text-sm font-medium tracking-wide">
-                {toast.message}
-              </p>
+              <p className="text-xs sm:text-sm font-medium">{toast.message}</p>
             </div>
           </div>
         )}
 
-        {/* Faixa superior caso o Administrador esteja testando o link */}
+        {/* Faixa superior apenas quando o Administrador testa o link */}
         {isSimulatingParticipant && (
-          <div className="border-b border-[#DCD6CD] bg-[#F3EFEA] px-4 sm:px-8 py-3">
-            <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-2 text-[#181816]">
-                <span className="px-2 py-0.5 bg-[#8C6D53] text-[#FAF8F5] uppercase tracking-widest font-semibold text-[10px]">
-                  Modo Teste
-                </span>
-                <span className="text-[#5C5852]">
-                  Visualizando link de{' '}
-                  <strong className="text-[#181816]">
-                    {currentParticipantTokenDoc?.participantName}
-                  </strong>{' '}
-                  (Nome sorteado oculto para preservar o sigilo)
-                </span>
-              </div>
+          <div className="border-b border-[#DCD6CD] bg-[#F3EFEA] px-4 py-2.5">
+            <div className="max-w-md sm:max-w-lg mx-auto flex items-center justify-between gap-2 text-xs">
+              <span className="text-[#5C5852] truncate">
+                Modo Teste:{' '}
+                <strong className="text-[#181816]">
+                  {currentParticipantTokenDoc?.participantName}
+                </strong>
+              </span>
               <button
                 type="button"
                 onClick={() => {
@@ -1929,464 +1942,376 @@ export default function App() {
                   setIsSimulatingParticipant(false);
                   setDecryptedResult(null);
                 }}
-                className="px-4 py-1.5 border border-[#181816] bg-[#181816] text-[#FAF8F5] hover:bg-[#2C4035] uppercase tracking-[0.15em] text-[10px] font-semibold transition cursor-pointer"
+                className="px-3 py-1 border border-[#181816] bg-[#181816] text-[#FAF8F5] uppercase tracking-wider text-[10px] font-semibold shrink-0 cursor-pointer"
               >
-                ← Voltar ao Painel Admin
+                ← Painel
               </button>
             </div>
           </div>
         )}
 
-        {/* Barra de Topo Editorial */}
-        <header className="border-b border-[#DCD6CD] px-6 sm:px-12 py-6">
-          <div className="max-w-5xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-3.5">
-              <ArchitecturalLogoMark className="w-8 h-8 text-[#181816]" />
-              <div>
-                <span className="block text-[10px] uppercase tracking-[0.25em] text-[#8C6D53] font-semibold">
-                  Edição Especial de Natal
-                </span>
-                <span
-                  style={fontSerifStyle}
-                  className="text-xl font-semibold tracking-tight text-[#181816]"
-                >
-                  {eventName}
-                </span>
-              </div>
+        {/* Topo Compacto Mobile-First */}
+        <header className="border-b border-[#DCD6CD] bg-[#FAF8F5] px-4 py-3.5">
+          <div className="max-w-md sm:max-w-lg mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <ArchitecturalLogoMark className="w-6 h-6 text-[#181816]" />
+              <span
+                style={fontSerifStyle}
+                className="text-lg font-semibold text-[#181816] tracking-tight"
+              >
+                {eventName}
+              </span>
             </div>
 
-            {systemConfig?.suggestedValue && (
-              <div className="hidden sm:block text-right">
-                <span className="block text-[10px] uppercase tracking-[0.2em] text-[#5C5852]">
-                  Valor Sugerido
-                </span>
-                <span className="text-xs font-semibold text-[#181816]">
-                  {systemConfig.suggestedValue}
-                </span>
-              </div>
+            {currentParticipantTokenDoc && (
+              <span className="text-xs font-medium text-[#5C5852]">
+                Olá, <strong className="text-[#181816]">{myFirstName}</strong>
+              </span>
             )}
           </div>
         </header>
 
-        {/* Conteúdo Principal do Participante */}
-        <main className="flex-1 max-w-5xl w-full mx-auto px-6 sm:px-12 py-10 sm:py-16">
+        {/* Container Centralizado na Proporção de Celular */}
+        <main className="flex-1 w-full max-w-md sm:max-w-lg mx-auto px-4 pt-5 pb-10 space-y-5">
           {!currentParticipantTokenDoc ? (
-            <div className="border border-[#DCD6CD] bg-[#F3EFEA]/50 p-8 sm:p-14 text-center space-y-5 max-w-xl mx-auto">
-              <span className="text-xs uppercase tracking-[0.25em] text-[#8E3B36] font-semibold">
-                00. Link Não Localizado
-              </span>
+            <div className="border border-[#DCD6CD] bg-[#F3EFEA]/60 p-8 text-center space-y-3 mt-6">
               <h2
                 style={fontSerifStyle}
-                className="text-3xl sm:text-4xl font-semibold text-[#181816]"
+                className="text-2xl font-semibold text-[#181816]"
               >
-                Convite Individual Expirado ou Inválido
+                Link não encontrado
               </h2>
-              <p className="text-base text-[#5C5852] leading-relaxed">
-                Este endereço não corresponde a um sorteio ativo. Verifique a
-                última mensagem enviada no seu WhatsApp pelo organizador da
-                família.
+              <p className="text-sm text-[#5C5852] leading-relaxed">
+                Confira a última mensagem enviada no seu WhatsApp pelo
+                organizador da família.
               </p>
             </div>
           ) : isDecryptingLink ? (
-            <div className="border border-[#DCD6CD] bg-[#FAF8F5] p-12 sm:p-16 text-center space-y-6 max-w-xl mx-auto">
-              <div className="w-10 h-[1px] bg-[#8C6D53] mx-auto animate-pulse" />
+            <div className="border border-[#DCD6CD] bg-[#FAF8F5] p-10 text-center space-y-4 mt-6">
+              <div className="w-8 h-[1px] bg-[#8C6D53] mx-auto animate-pulse" />
               <h2
                 style={fontSerifStyle}
-                className="text-3xl sm:text-4xl font-semibold text-[#181816]"
+                className="text-2xl font-semibold text-[#181816]"
               >
-                Revelando seu Amigo Secreto...
+                Abrindo seu sorteio...
               </h2>
             </div>
           ) : (
-            <div className="space-y-12 sm:space-y-16">
-              {/* SEÇÃO 01: REVELAÇÃO IMEDIATA DE QUEM A PESSOA TIROU */}
-              <section className="relative">
-                {/* Moldura Geométrica Deslocada (Swiss Editorial Frame) */}
-                <div className="hidden sm:block absolute -top-3 -left-3 w-full h-full border border-[#8C6D53]/40 pointer-events-none" />
-
-                <div className="relative border border-[#181816] bg-[#FAF8F5] p-6 sm:p-12">
-                  <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-[#DCD6CD]">
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs font-bold uppercase tracking-[0.25em] text-[#8E3B36]">
-                        01. Revelação Exclusiva
-                      </span>
-                      <span className="w-6 h-[1px] bg-[#DCD6CD]" />
-                      <span className="text-xs uppercase tracking-[0.15em] text-[#5C5852]">
-                        Acesso Direto Verificado
-                      </span>
-                    </div>
-
-                    <span className="px-3 py-1 bg-[#F3EFEA] border border-[#DCD6CD] text-xs font-semibold text-[#181816]">
-                      Participante: {currentParticipantTokenDoc.participantName}
-                    </span>
-                  </div>
-
-                  <div className="py-8 sm:py-12 text-center sm:text-left grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-                    <div className="lg:col-span-4 space-y-3">
-                      <p className="text-sm sm:text-base uppercase tracking-[0.2em] text-[#5C5852] font-medium">
-                        Olá,{' '}
-                        <strong className="text-[#181816]">
-                          {
-                            String(
-                              currentParticipantTokenDoc.participantName || ''
-                            ).split(' ')[0]
-                          }
-                        </strong>
-                        .
-                      </p>
-                      <h2
-                        style={fontSerifStyle}
-                        className="text-3xl sm:text-4xl font-normal italic text-[#5C5852] leading-tight"
-                      >
-                        Neste Natal, a pessoa que você tirou no Amigo Secreto é:
-                      </h2>
-                      <div className="w-12 h-[2px] bg-[#2C4035] mx-auto sm:mx-0 pt-0.5" />
-                    </div>
-
-                    <div className="lg:col-span-8 border border-[#DCD6CD] bg-[#F3EFEA] p-8 sm:p-12 relative">
-                      <span className="block text-[11px] uppercase tracking-[0.25em] text-[#8C6D53] font-semibold mb-2">
-                        Seu Amigo Secreto Sorteado
-                      </span>
-                      <div
-                        style={fontSerifStyle}
-                        className="text-4xl sm:text-6xl font-bold text-[#2C4035] tracking-tight break-words leading-none"
-                      >
-                        {isSimulatingParticipant
-                          ? '[ Nome Oculto no Modo Teste ]'
-                          : drawnName}
-                      </div>
-                      <p className="text-xs sm:text-sm text-[#5C5852] mt-5 pt-4 border-t border-[#DCD6CD]">
-                        Guarde segredo. Você pode abrir este mesmo link no seu
-                        WhatsApp quantas vezes quiser para consultar o nome e as
-                        dicas de presente abaixo.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              {/* SEÇÃO 02 & 03: GRID ASSIMÉTRICO (DICAS DE QUEM VOCÊ TIROU + BOTÃO DAR DICA DE PRESENTE) */}
-              <section className="grid grid-cols-1 lg:grid-cols-12 gap-8 sm:gap-10 items-start">
-                {/* COLUNA ESQUERDA (7 COLUNAS): DICAS DE PRESENTE DA PESSOA SORTEADA */}
-                <div className="lg:col-span-7 border border-[#DCD6CD] bg-[#FAF8F5] p-6 sm:p-10 space-y-6">
-                  <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-[#DCD6CD]">
-                    <div>
-                      <span className="block text-[11px] uppercase tracking-[0.25em] text-[#2C4035] font-bold">
-                        02. Lista de Preferências
-                      </span>
-                      <h3
-                        style={fontSerifStyle}
-                        className="text-2xl sm:text-3xl font-semibold text-[#181816] mt-1"
-                      >
-                        O que {isSimulatingParticipant ? 'seu sorteado' : drawnName}{' '}
-                        gostaria de ganhar
-                      </h3>
-                    </div>
-                    <span className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-[#2C4035] bg-[#F3EFEA] px-3 py-1 border border-[#DCD6CD]">
-                      <RefreshCw className="w-3 h-3" />
-                      Tempo Real
-                    </span>
-                  </div>
-
-                  {isSimulatingParticipant ? (
-                    <div className="p-8 bg-[#F3EFEA] border border-[#DCD6CD] text-sm text-[#5C5852] leading-relaxed">
-                      No modo de teste administrativo, as dicas da pessoa
-                      sorteada ficam ocultas para que você não descubra quem{' '}
-                      <strong>
-                        {currentParticipantTokenDoc.participantName}
-                      </strong>{' '}
-                      tirou.
-                    </div>
-                  ) : !drawnHasHints ? (
-                    <div className="p-8 bg-[#F3EFEA]/60 border border-dashed border-[#8C6D53] space-y-3">
-                      <span className="inline-block text-xs uppercase tracking-[0.2em] text-[#8C6D53] font-semibold">
-                        Aguardando Preenchimento
-                      </span>
-                      <h4
-                        style={fontSerifStyle}
-                        className="text-2xl font-semibold text-[#181816]"
-                      >
-                        {drawnName} ainda não cadastrou dicas de presente.
-                      </h4>
-                      <p className="text-sm sm:text-base text-[#5C5852] leading-relaxed">
-                        Assim que <strong>{drawnName}</strong> abrir o link
-                        dele(a) e clicar no botão{' '}
-                        <strong>"Dar Dica de Presente"</strong>, os desejos e
-                        tamanhos aparecerão automaticamente aqui para você.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-6">
-                      {/* Desejo Principal */}
-                      <div className="p-6 bg-[#F3EFEA] border-l-2 border-[#2C4035] space-y-2">
-                        <span className="text-xs uppercase tracking-[0.2em] text-[#2C4035] font-bold block">
-                          Sugestões do que gostaria de ganhar
-                        </span>
-                        <p className="text-xl sm:text-2xl font-semibold text-[#181816] leading-relaxed">
-                          {drawnPersonLatestData?.wantToGet ||
-                            'Não especificou preferência'}
-                        </p>
-                      </div>
-
-                      {/* O que evita / não gostaria */}
-                      {drawnPersonLatestData?.dontWantToGet && (
-                        <div className="p-5 bg-[#FAF8F5] border border-[#DCD6CD] border-l-2 border-l-[#8E3B36] space-y-1">
-                          <span className="text-xs uppercase tracking-[0.2em] text-[#8E3B36] font-bold block">
-                            Prefere evitar / Não gostaria de ganhar
-                          </span>
-                          <p className="text-base sm:text-lg font-medium text-[#181816]">
-                            {drawnPersonLatestData.dontWantToGet}
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Grade de Medidas e Tamanhos */}
-                      <div className="grid grid-cols-3 border border-[#DCD6CD] divide-x divide-[#DCD6CD] bg-[#FAF8F5]">
-                        <div className="p-4 text-center">
-                          <span className="text-[11px] uppercase tracking-[0.15em] text-[#5C5852] block">
-                            Camisa / Blusa
-                          </span>
-                          <strong
-                            style={fontSerifStyle}
-                            className="text-2xl sm:text-3xl font-bold text-[#181816] block mt-1"
-                          >
-                            {drawnPersonLatestData?.shirtSize || '—'}
-                          </strong>
-                        </div>
-                        <div className="p-4 text-center">
-                          <span className="text-[11px] uppercase tracking-[0.15em] text-[#5C5852] block">
-                            Calça
-                          </span>
-                          <strong
-                            style={fontSerifStyle}
-                            className="text-2xl sm:text-3xl font-bold text-[#181816] block mt-1"
-                          >
-                            {drawnPersonLatestData?.pantsSize || '—'}
-                          </strong>
-                        </div>
-                        <div className="p-4 text-center">
-                          <span className="text-[11px] uppercase tracking-[0.15em] text-[#5C5852] block">
-                            Calçado
-                          </span>
-                          <strong
-                            style={fontSerifStyle}
-                            className="text-2xl sm:text-3xl font-bold text-[#181816] block mt-1"
-                          >
-                            {drawnPersonLatestData?.shoeSize || '—'}
-                          </strong>
-                        </div>
-                      </div>
-
-                      {/* Observações Adicionais */}
-                      {drawnPersonLatestData?.observations && (
-                        <div className="p-5 bg-[#F3EFEA]/50 border border-[#DCD6CD] space-y-1">
-                          <span className="text-xs uppercase tracking-[0.2em] text-[#8C6D53] font-bold block">
-                            Observações, Cores ou Detalhes
-                          </span>
-                          <p className="text-base text-[#181816]">
-                            {drawnPersonLatestData.observations}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* COLUNA DIREITA (5 COLUNAS): AUTOATENDIMENTO "DAR DICA DE PRESENTE" */}
-                <div className="lg:col-span-5 border border-[#181816] bg-[#F3EFEA] p-6 sm:p-10 space-y-6">
-                  <div className="pb-4 border-b border-[#DCD6CD]">
-                    <span className="block text-[11px] uppercase tracking-[0.25em] text-[#8C6D53] font-bold">
-                      03. Suas Próprias Dicas
-                    </span>
-                    <h3
-                      style={fontSerifStyle}
-                      className="text-2xl sm:text-3xl font-semibold text-[#181816] mt-1"
-                    >
-                      Ajude quem tirou você
-                    </h3>
-                  </div>
-
-                  <p className="text-sm sm:text-base text-[#5C5852] leading-relaxed">
-                    Escreva abaixo o que <strong>você</strong> gostaria de
-                    ganhar e seus tamanhos de roupa ou calçado. A pessoa que
-                    tirou você verá suas dicas atualizadas na mesma hora!
-                  </p>
-
-                  {iHaveFilledMyHints && (
-                    <div className="p-4 bg-[#FAF8F5] border border-[#DCD6CD] text-xs space-y-1.5 text-[#5C5852]">
-                      <span className="text-[10px] uppercase tracking-[0.2em] text-[#2C4035] font-bold block">
-                        ✓ Suas dicas atuais registradas:
-                      </span>
-                      {myOwnParticipantDoc?.wantToGet && (
-                        <p className="text-[#181816] font-medium">
-                          Desejo: {myOwnParticipantDoc.wantToGet}
-                        </p>
-                      )}
-                      <p>
-                        Medidas: Camisa {myOwnParticipantDoc?.shirtSize || '—'}{' '}
-                        • Calça {myOwnParticipantDoc?.pantsSize || '—'} •
-                        Calçado {myOwnParticipantDoc?.shoeSize || '—'}
-                      </p>
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={handleOpenMyGiftHintsModal}
-                    className="w-full py-5 px-6 bg-[#2C4035] hover:bg-[#181816] text-[#FAF8F5] border border-[#181816] uppercase tracking-[0.2em] text-xs sm:text-sm font-bold flex items-center justify-between transition cursor-pointer"
-                  >
-                    <span className="flex items-center gap-3">
-                      <Gift className="w-5 h-5 text-[#8C6D53]" />
-                      {iHaveFilledMyHints
-                        ? 'EDITAR MINHAS DICAS DE PRESENTE'
-                        : 'DAR DICA DE PRESENTE'}
-                    </span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </section>
-            </div>
-          )}
-        </main>
-
-        {/* MODAL PARA O PARTICIPANTE PREENCHER / ATUALIZAR SUAS PRÓPRIAS DICAS */}
-        {myHintsModalOpen && (
-          <div className="fixed inset-0 z-50 bg-[#181816]/60 backdrop-blur-[2px] flex items-center justify-center p-4 overflow-y-auto">
-            <div className="bg-[#FAF8F5] text-[#181816] border border-[#181816] max-w-xl w-full p-6 sm:p-10 space-y-6 my-8 shadow-2xl">
-              <div className="flex items-start justify-between pb-4 border-b border-[#DCD6CD]">
-                <div>
-                  <span className="text-[11px] uppercase tracking-[0.25em] text-[#8C6D53] font-bold">
-                    Preferências Pessoais •{' '}
-                    {currentParticipantTokenDoc?.participantName}
+            <>
+              {/* 1. CARTÃO PRINCIPAL ENXUTO: QUEM VOCÊ TIROU */}
+              <section className="border border-[#181816] bg-[#FAF8F5] p-5 sm:p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs uppercase tracking-[0.2em] text-[#8C6D53] font-bold">
+                    Você tirou:
                   </span>
-                  <h3
-                    style={fontSerifStyle}
-                    className="text-3xl font-semibold text-[#181816] mt-1"
-                  >
-                    Dar Dica de Presente
-                  </h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setMyHintsModalOpen(false)}
-                  className="w-9 h-9 border border-[#DCD6CD] hover:border-[#181816] text-sm font-semibold cursor-pointer"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <p className="text-sm text-[#5C5852] leading-relaxed">
-                Preencha os campos que desejar. Assim que você salvar, a pessoa
-                que tirou você no sorteio verá essas informações atualizadas.
-              </p>
-
-              <form onSubmit={handleSaveMyGiftHints} className="space-y-5">
-                <div>
-                  <label className="block text-xs uppercase tracking-[0.18em] font-bold text-[#2C4035] mb-2">
-                    O que você gostaria de ganhar?
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={myWant}
-                    onChange={(e) => setMyWant(e.target.value)}
-                    placeholder="Ex: Perfume, livro, camisa, bolsa, chocolates, itens de casa..."
-                    className="w-full px-4 py-3 bg-[#F3EFEA] border border-[#DCD6CD] focus:border-[#181816] text-base text-[#181816] outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs uppercase tracking-[0.18em] font-bold text-[#8E3B36] mb-2">
-                    O que você NÃO gostaria de ganhar? (Opcional)
-                  </label>
-                  <input
-                    type="text"
-                    value={myDontWant}
-                    onChange={(e) => setMyDontWant(e.target.value)}
-                    placeholder="Ex: Perfumes doces, roupas escuras..."
-                    className="w-full px-4 py-3 bg-[#F3EFEA] border border-[#DCD6CD] focus:border-[#181816] text-base text-[#181816] outline-none"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-[11px] uppercase tracking-[0.15em] font-bold text-[#5C5852] mb-1.5">
-                      Tamanho Camisa / Blusa
-                    </label>
-                    <input
-                      type="text"
-                      value={myShirt}
-                      onChange={(e) => setMyShirt(e.target.value)}
-                      placeholder="Ex: P, M, G, GG"
-                      className="w-full px-4 py-3 bg-[#F3EFEA] border border-[#DCD6CD] focus:border-[#181816] text-base font-semibold outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] uppercase tracking-[0.15em] font-bold text-[#5C5852] mb-1.5">
-                      Tamanho Calça
-                    </label>
-                    <input
-                      type="text"
-                      value={myPants}
-                      onChange={(e) => setMyPants(e.target.value)}
-                      placeholder="Ex: 38, 42, M"
-                      className="w-full px-4 py-3 bg-[#F3EFEA] border border-[#DCD6CD] focus:border-[#181816] text-base font-semibold outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] uppercase tracking-[0.15em] font-bold text-[#5C5852] mb-1.5">
-                      Numeração Calçado
-                    </label>
-                    <input
-                      type="text"
-                      value={myShoe}
-                      onChange={(e) => setMyShoe(e.target.value)}
-                      placeholder="Ex: 36, 40"
-                      className="w-full px-4 py-3 bg-[#F3EFEA] border border-[#DCD6CD] focus:border-[#181816] text-base font-semibold outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs uppercase tracking-[0.18em] font-bold text-[#5C5852] mb-2">
-                    Outras observações ou cores preferidas (Opcional)
-                  </label>
-                  <input
-                    type="text"
-                    value={myNotes}
-                    onChange={(e) => setMyNotes(e.target.value)}
-                    placeholder="Ex: Prefiro tons neutros, dourado, livros de romance..."
-                    className="w-full px-4 py-3 bg-[#F3EFEA] border border-[#DCD6CD] focus:border-[#181816] text-base outline-none"
-                  />
-                </div>
-
-                <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t border-[#DCD6CD]">
                   <button
                     type="button"
-                    onClick={() => setMyHintsModalOpen(false)}
-                    className="py-3.5 px-6 border border-[#DCD6CD] hover:border-[#181816] text-xs uppercase tracking-[0.2em] font-bold text-[#5C5852] cursor-pointer"
+                    onClick={() => setIsDrawnNameVisible((v) => !v)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 border border-[#DCD6CD] bg-[#F3EFEA] text-[11px] text-[#5C5852] hover:text-[#181816] transition cursor-pointer"
+                    title={
+                      isDrawnNameVisible ? 'Ocultar nome' : 'Mostrar nome'
+                    }
                   >
-                    Cancelar
+                    {isDrawnNameVisible ? (
+                      <>
+                        <EyeOff className="w-3.5 h-3.5" />
+                        <span>Ocultar</span>
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Mostrar</span>
+                      </>
+                    )}
                   </button>
+                </div>
+
+                <div className="border border-[#DCD6CD] bg-[#F3EFEA] px-4 py-6 text-center">
+                  <div
+                    style={fontSerifStyle}
+                    className="text-4xl sm:text-5xl font-bold text-[#2C4035] tracking-tight break-words leading-tight"
+                  >
+                    {isSimulatingParticipant
+                      ? '[ Nome Oculto no Teste ]'
+                      : isDrawnNameVisible
+                      ? drawnName
+                      : '••••••••••••'}
+                  </div>
+                </div>
+
+                {/* ATALHOS RÁPIDOS DE ROLAGEM (DEIXA CLARO QUE HÁ MAIS CONTEÚDO ABAIXO) */}
+                <div className="grid grid-cols-1 gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={scrollToFriendHints}
+                    className="w-full py-3 px-4 border border-[#DCD6CD] bg-[#F3EFEA]/70 hover:bg-[#F3EFEA] text-[#181816] text-xs font-semibold flex items-center justify-between transition cursor-pointer"
+                  >
+                    <span>
+                      Ver dicas de{' '}
+                      {isSimulatingParticipant ? 'seu sorteado' : drawnFirstName}{' '}
+                      ↓
+                    </span>
+                    <ChevronDown className="w-4 h-4 text-[#8C6D53] animate-bounce" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={scrollToMyHintsAndFocus}
+                    className="w-full py-3.5 px-4 bg-[#2C4035] hover:bg-[#181816] text-[#FAF8F5] text-xs font-semibold tracking-wide flex items-center justify-between transition cursor-pointer"
+                  >
+                    <span>🎁 Dar minhas dicas de presente ↓</span>
+                    <ChevronDown className="w-4 h-4 text-[#8C6D53] animate-bounce" />
+                  </button>
+                </div>
+              </section>
+
+              {/* 2. DICAS DE PRESENTE DA PESSOA SORTEADA */}
+              <section
+                ref={friendHintsRef}
+                id="dicas-amigo"
+                className="border border-[#DCD6CD] bg-[#FAF8F5] p-5 sm:p-6 space-y-4 scroll-mt-4"
+              >
+                <div className="pb-3 border-b border-[#DCD6CD]">
+                  <h2
+                    style={fontSerifStyle}
+                    className="text-2xl font-semibold text-[#181816]"
+                  >
+                    Dicas de presente de{' '}
+                    {isSimulatingParticipant ? 'seu sorteado' : drawnName}
+                  </h2>
+                </div>
+
+                {isSimulatingParticipant ? (
+                  <p className="text-sm text-[#5C5852] py-2">
+                    Oculto no modo de teste administrativo.
+                  </p>
+                ) : !drawnHasHints ? (
+                  <div className="p-4 bg-[#F3EFEA]/70 border border-dashed border-[#8C6D53] space-y-1.5">
+                    <p className="text-sm font-semibold text-[#181816]">
+                      {drawnFirstName} ainda não preencheu as dicas.
+                    </p>
+                    <p className="text-xs text-[#5C5852] leading-relaxed">
+                      Assim que {drawnFirstName} salvar o que gostaria de
+                      ganhar, aparecerá aqui automaticamente.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3.5">
+                    {/* Gostaria de ganhar */}
+                    <div className="p-4 bg-[#F3EFEA] border-l-2 border-[#2C4035] space-y-1">
+                      <span className="text-[11px] uppercase tracking-[0.15em] text-[#2C4035] font-bold block">
+                        Gostaria de ganhar
+                      </span>
+                      <p className="text-base sm:text-lg font-semibold text-[#181816] leading-snug">
+                        {drawnPersonLatestData?.wantToGet || 'Não informado'}
+                      </p>
+                    </div>
+
+                    {/* Prefere evitar */}
+                    {drawnPersonLatestData?.dontWantToGet && (
+                      <div className="p-3.5 bg-[#FAF8F5] border border-[#DCD6CD] border-l-2 border-l-[#8E3B36] space-y-0.5">
+                        <span className="text-[11px] uppercase tracking-[0.15em] text-[#8E3B36] font-bold block">
+                          Prefere evitar
+                        </span>
+                        <p className="text-sm font-medium text-[#181816]">
+                          {drawnPersonLatestData.dontWantToGet}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Tamanhos em grade compacta para celular */}
+                    <div className="grid grid-cols-3 border border-[#DCD6CD] divide-x divide-[#DCD6CD] bg-[#FAF8F5]">
+                      <div className="p-3 text-center">
+                        <span className="text-[10px] uppercase tracking-wider text-[#5C5852] block">
+                          Camisa/Blusa
+                        </span>
+                        <strong
+                          style={fontSerifStyle}
+                          className="text-xl font-bold text-[#181816] block mt-0.5"
+                        >
+                          {drawnPersonLatestData?.shirtSize || '—'}
+                        </strong>
+                      </div>
+                      <div className="p-3 text-center">
+                        <span className="text-[10px] uppercase tracking-wider text-[#5C5852] block">
+                          Calça
+                        </span>
+                        <strong
+                          style={fontSerifStyle}
+                          className="text-xl font-bold text-[#181816] block mt-0.5"
+                        >
+                          {drawnPersonLatestData?.pantsSize || '—'}
+                        </strong>
+                      </div>
+                      <div className="p-3 text-center">
+                        <span className="text-[10px] uppercase tracking-wider text-[#5C5852] block">
+                          Calçado
+                        </span>
+                        <strong
+                          style={fontSerifStyle}
+                          className="text-xl font-bold text-[#181816] block mt-0.5"
+                        >
+                          {drawnPersonLatestData?.shoeSize || '—'}
+                        </strong>
+                      </div>
+                    </div>
+
+                    {/* Observações */}
+                    {drawnNotes && (
+                      <div className="p-3.5 bg-[#F3EFEA]/50 border border-[#DCD6CD] space-y-0.5">
+                        <span className="text-[10px] uppercase tracking-[0.15em] text-[#8C6D53] font-bold block">
+                          Observações
+                        </span>
+                        <p className="text-sm text-[#181816]">{drawnNotes}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </section>
+
+              {/* 3. SUAS PRÓPRIAS DICAS DE PRESENTE (FORMULÁRIO DIRETO NO CELULAR) */}
+              <section
+                ref={myHintsSectionRef}
+                id="minhas-dicas"
+                className="border border-[#181816] bg-[#F3EFEA] p-5 sm:p-6 space-y-4 scroll-mt-4"
+              >
+                <div className="pb-3 border-b border-[#DCD6CD] flex items-center justify-between gap-2">
+                  <div>
+                    <h2
+                      style={fontSerifStyle}
+                      className="text-2xl font-semibold text-[#181816]"
+                    >
+                      Suas dicas de presente
+                    </h2>
+                    <p className="text-xs text-[#5C5852] mt-0.5 leading-relaxed">
+                      Preencha abaixo para ajudar quem tirou você (o seu amigo
+                      secreto não saberá quem é você).
+                    </p>
+                  </div>
+                  {iHaveFilledMyHints && (
+                    <span className="px-2.5 py-1 bg-[#2C4035] text-[#FAF8F5] text-[10px] uppercase tracking-wider font-semibold shrink-0">
+                      ✓ Salvo
+                    </span>
+                  )}
+                </div>
+
+                <form onSubmit={handleSaveMyGiftHints} className="space-y-3.5">
+                  <div>
+                    <label className="block text-xs font-semibold text-[#2C4035] mb-1">
+                      O que você gostaria de ganhar?
+                    </label>
+                    <textarea
+                      ref={myWantInputRef}
+                      rows={2}
+                      value={myWant}
+                      onChange={(e) => setMyWant(e.target.value)}
+                      placeholder="Ex: Perfume, livro, camisa, bolsa, chocolates..."
+                      className="w-full px-3.5 py-2.5 bg-[#FAF8F5] border border-[#DCD6CD] focus:border-[#181816] text-sm text-[#181816] outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-[#8E3B36] mb-1">
+                      O que prefere evitar? (Opcional)
+                    </label>
+                    <input
+                      type="text"
+                      value={myDontWant}
+                      onChange={(e) => setMyDontWant(e.target.value)}
+                      placeholder="Ex: Perfumes doces, roupas escuras..."
+                      className="w-full px-3.5 py-2.5 bg-[#FAF8F5] border border-[#DCD6CD] focus:border-[#181816] text-sm text-[#181816] outline-none"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2.5">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-[#5C5852] mb-1">
+                        Camisa/Blusa
+                      </label>
+                      <input
+                        type="text"
+                        value={myShirt}
+                        onChange={(e) => setMyShirt(e.target.value)}
+                        placeholder="P, M, G"
+                        className="w-full px-3 py-2.5 bg-[#FAF8F5] border border-[#DCD6CD] focus:border-[#181816] text-sm font-semibold text-center outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-[#5C5852] mb-1">
+                        Calça
+                      </label>
+                      <input
+                        type="text"
+                        value={myPants}
+                        onChange={(e) => setMyPants(e.target.value)}
+                        placeholder="38, 42"
+                        className="w-full px-3 py-2.5 bg-[#FAF8F5] border border-[#DCD6CD] focus:border-[#181816] text-sm font-semibold text-center outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-[#5C5852] mb-1">
+                        Calçado
+                      </label>
+                      <input
+                        type="text"
+                        value={myShoe}
+                        onChange={(e) => setMyShoe(e.target.value)}
+                        placeholder="37, 40"
+                        className="w-full px-3 py-2.5 bg-[#FAF8F5] border border-[#DCD6CD] focus:border-[#181816] text-sm font-semibold text-center outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-[#5C5852] mb-1">
+                      Observações ou cores preferidas (Opcional)
+                    </label>
+                    <input
+                      type="text"
+                      value={myNotes}
+                      onChange={(e) => setMyNotes(e.target.value)}
+                      placeholder="Ex: Tons neutros, dourado, romance..."
+                      className="w-full px-3.5 py-2.5 bg-[#FAF8F5] border border-[#DCD6CD] focus:border-[#181816] text-sm text-[#181816] outline-none"
+                    />
+                  </div>
+
                   <button
                     type="submit"
                     disabled={savingMyHints}
-                    className="py-4 px-8 bg-[#2C4035] hover:bg-[#181816] text-[#FAF8F5] text-xs uppercase tracking-[0.2em] font-bold transition cursor-pointer"
+                    className="w-full py-4 px-5 bg-[#2C4035] hover:bg-[#181816] text-[#FAF8F5] border border-[#181816] uppercase tracking-[0.15em] text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer"
                   >
-                    {savingMyHints
-                      ? 'Salvando...'
-                      : 'Salvar Minhas Dicas de Presente'}
+                    <Gift className="w-4 h-4 text-[#8C6D53]" />
+                    <span>
+                      {savingMyHints
+                        ? 'SALVANDO SUAS DICAS...'
+                        : iHaveFilledMyHints
+                        ? 'ATUALIZAR MINHAS DICAS DE PRESENTE'
+                        : '🎁 SALVAR MINHAS DICAS DE PRESENTE'}
+                    </span>
                   </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+                </form>
+              </section>
+            </>
+          )}
+        </main>
 
-        <footer className="border-t border-[#DCD6CD] px-6 sm:px-12 py-6 text-center text-xs uppercase tracking-[0.2em] text-[#5C5852]">
-          {eventName} — Acesso Individual Criptografado
-        </footer>
+        {/* INDICADOR FLUTUANTE DE SCROLL NO CELULAR (SOME ASSIM QUE A PESSOA ROLA A TELA) */}
+        {currentParticipantTokenDoc &&
+          !isDecryptingLink &&
+          !hasScrolledMobile && (
+            <div className="fixed bottom-3 inset-x-0 z-40 flex justify-center px-4 pointer-events-none">
+              <button
+                type="button"
+                onClick={scrollToFriendHints}
+                className="pointer-events-auto inline-flex items-center gap-2 px-4 py-2.5 bg-[#181816] text-[#FAF8F5] border border-[#8C6D53] shadow-lg text-xs font-medium tracking-wide cursor-pointer"
+              >
+                <span>Role para baixo para ver e dar dicas</span>
+                <ChevronDown className="w-4 h-4 text-[#8C6D53] animate-bounce" />
+              </button>
+            </div>
+          )}
       </div>
     );
   }
