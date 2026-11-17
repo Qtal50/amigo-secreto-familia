@@ -2348,26 +2348,27 @@ export default function App() {
                   NESTE NATAL, A PESSOA QUE VOCÊ TIROU NO AMIGO SECRETO É:
                 </p>
 
-                <div className="border border-[#DCD6CD] bg-[#F3EFEA] px-4 py-6 text-center">
-                  <div
-                    style={fontSerifStyle}
-                    className="text-4xl sm:text-5xl font-bold text-[#2C4035] tracking-tight break-words leading-tight"
-                  >
-                    {isSimulatingParticipant
-                      ? '[ Nome Oculto no Teste ]'
-                      : drawnName}
+                {/* CAIXA ÚNICA: NOME DO AMIGO SECRETO + BOTÃO DE VER DICA SEPARADO POR UMA LINHA */}
+                <div className="border border-[#DCD6CD] bg-[#F3EFEA]">
+                  <div className="px-4 py-6 text-center">
+                    <div
+                      style={fontSerifStyle}
+                      className="text-4xl sm:text-5xl font-bold text-[#2C4035] tracking-tight break-words leading-tight"
+                    >
+                      {isSimulatingParticipant
+                        ? '[ Nome Oculto no Teste ]'
+                        : drawnName}
+                    </div>
                   </div>
-                </div>
 
-                {/* BOTÃO: VER A DICA DE PRESENTE DO SEU AMIGO (MESMA LARGURA E COR DO FUNDO DO NOME) */}
-                <button
-                  type="button"
-                  onClick={openFriendHintsTab}
-                  className="w-full py-4 px-4 border border-[#DCD6CD] hover:border-[#181816] bg-[#F3EFEA] text-[#181816] text-xs uppercase tracking-[0.14em] font-bold flex items-center justify-between transition cursor-pointer"
-                >
-                  <span>VER A DICA DE PRESENTE DO SEU AMIGO</span>
-                  <ArrowRight className="w-4 h-4 text-[#8C6D53] shrink-0" />
-                </button>
+                  <button
+                    type="button"
+                    onClick={openFriendHintsTab}
+                    className="w-full py-3.5 px-4 border-t border-[#DCD6CD] bg-[#F3EFEA] hover:bg-[#EBE5DC]/70 text-[#181816] text-xs uppercase tracking-[0.14em] font-bold text-center flex items-center justify-center transition cursor-pointer"
+                  >
+                    <span>VER A DICA DE PRESENTE DO SEU AMIGO</span>
+                  </button>
+                </div>
 
                 {/* BOTÃO DE AÇÃO: ABRIR ABA DE DAR DICAS */}
                 <button
