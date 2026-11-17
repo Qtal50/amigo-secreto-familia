@@ -1444,6 +1444,64 @@ export default function App() {
     });
   };
 
+  const handleClearAllGiftHints = () => {
+    const filledParticipants = participants.filter((p) =>
+      hasFilledGiftHints(p)
+    );
+    if (filledParticipants.length === 0) {
+      showToast(
+        'Nenhuma dica de presente foi preenchida pelos familiares ainda.',
+        'error'
+      );
+      return;
+    }
+
+    setConfirmModal({
+      title: 'Limpar Todas as Dicas de Presentes?',
+      description: `Esta ação apagará todas as dicas de presentes, restrições, tamanhos e observações preenchidas por ${filledParticipants.length} familiar(es). Os participantes e o sorteio atual serão mantidos.`,
+      confirmText: 'Limpar Todas as Dicas',
+      danger: true,
+      onConfirm: async () => {
+        setConfirmModal(null);
+        setIsBusy(true);
+        try {
+          for (const p of participants) {
+            await setDoc(
+              doc(
+                db,
+                'artifacts',
+                appId,
+                'public',
+                'data',
+                'participants',
+                p.id
+              ),
+              {
+                wantToGet: '',
+                dontWantToGet: '',
+                shoeSize: '',
+                shirtSize: '',
+                pantsSize: '',
+                observations: '',
+                notes: '',
+                hintsUpdatedAt: null,
+              },
+              { merge: true }
+            );
+          }
+          showToast(
+            'Todas as dicas de presentes dos familiares foram limpas com sucesso.'
+          );
+        } catch (err) {
+          console.error('Erro ao limpar dicas de presentes:', err);
+          showToast('Erro ao limpar as dicas de presentes.', 'error');
+        } finally {
+          setIsBusy(false);
+        }
+      },
+    });
+  };
+
   // ============================================================================
   // 10. SALVAR DICAS DE PRESENTE PELO PRÓPRIO PARTICIPANTE (EM TEMPO REAL)
   // ============================================================================
@@ -2180,6 +2238,7 @@ export default function App() {
               </section>
 
               {/* 2. DICAS DE PRESENTE DA PESSOA SORTEADA (CAMPOS SEMPRE VISÍVEIS) */}
+              {/* 2. DICAS DE PRESENTE DA PESSOA SORTEADA */}
               <section
                 ref={friendHintsRef}
                 id="dicas-amigo"
@@ -2207,90 +2266,89 @@ export default function App() {
                   </p>
                 ) : (
                   <div className="space-y-3.5">
-                    {/* Gostaria de ganhar */}
+                    {/* Gostaria de ganhar (Sempre exibido) */}
                     <div className="p-4 bg-[#F3EFEA] border-l-2 border-[#2C4035] space-y-1">
                       <span className="text-[11px] uppercase tracking-[0.15em] text-[#2C4035] font-bold block">
                         O que gostaria de ganhar
                       </span>
                       <p
                         className={`text-base sm:text-lg leading-snug ${
-                          drawnPersonLatestData?.wantToGet
+                          drawnPersonLatestData?.wantToGet?.trim()
                             ? 'font-semibold text-[#181816]'
                             : 'text-sm italic text-[#5C5852]'
                         }`}
                       >
-                        {drawnPersonLatestData?.wantToGet ||
+                        {drawnPersonLatestData?.wantToGet?.trim() ||
                           'Ainda não informado pelo seu amigo secreto'}
                       </p>
                     </div>
 
-                    {/* O que não gostaria de ganhar */}
-                    <div className="p-3.5 bg-[#FAF8F5] border border-[#DCD6CD] border-l-2 border-l-[#8E3B36] space-y-0.5">
-                      <span className="text-[11px] uppercase tracking-[0.15em] text-[#8E3B36] font-bold block">
-                        O que não gostaria de ganhar
-                      </span>
-                      <p
-                        className={`text-sm ${
-                          drawnPersonLatestData?.dontWantToGet
-                            ? 'font-medium text-[#181816]'
-                            : 'italic text-[#5C5852]'
-                        }`}
-                      >
-                        {drawnPersonLatestData?.dontWantToGet ||
-                          'Nenhuma restrição informada'}
-                      </p>
-                    </div>
+                    {/* O que não gostaria de ganhar (Exibido somente quando preenchido) */}
+                    {Boolean(drawnPersonLatestData?.dontWantToGet?.trim()) && (
+                      <div className="p-3.5 bg-[#FAF8F5] border border-[#DCD6CD] border-l-2 border-l-[#8E3B36] space-y-0.5">
+                        <span className="text-[11px] uppercase tracking-[0.15em] text-[#8E3B36] font-bold block">
+                          O que não gostaria de ganhar
+                        </span>
+                        <p className="text-sm font-medium text-[#181816]">
+                          {drawnPersonLatestData.dontWantToGet.trim()}
+                        </p>
+                      </div>
+                    )}
 
-                    {/* Tamanhos em grade sempre visível */}
-                    <div className="grid grid-cols-3 border border-[#DCD6CD] divide-x divide-[#DCD6CD] bg-[#FAF8F5]">
-                      <div className="p-3 text-center">
-                        <span className="text-[10px] uppercase tracking-wider text-[#5C5852] block">
-                          Camisa/Blusa
-                        </span>
-                        <strong
-                          style={fontSerifStyle}
-                          className="text-xl font-bold text-[#181816] block mt-0.5"
-                        >
-                          {drawnPersonLatestData?.shirtSize || '—'}
-                        </strong>
+                    {/* Tamanhos em grade (Exibido somente quando pelo menos um tamanho for preenchido) */}
+                    {Boolean(
+                      drawnPersonLatestData?.shirtSize?.trim() ||
+                        drawnPersonLatestData?.pantsSize?.trim() ||
+                        drawnPersonLatestData?.shoeSize?.trim()
+                    ) && (
+                      <div className="grid grid-cols-3 border border-[#DCD6CD] divide-x divide-[#DCD6CD] bg-[#FAF8F5]">
+                        <div className="p-3 text-center">
+                          <span className="text-[10px] uppercase tracking-wider text-[#5C5852] block">
+                            Camisa/Blusa
+                          </span>
+                          <strong
+                            style={fontSerifStyle}
+                            className="text-xl font-bold text-[#181816] block mt-0.5"
+                          >
+                            {drawnPersonLatestData?.shirtSize?.trim() || '—'}
+                          </strong>
+                        </div>
+                        <div className="p-3 text-center">
+                          <span className="text-[10px] uppercase tracking-wider text-[#5C5852] block">
+                            Calça
+                          </span>
+                          <strong
+                            style={fontSerifStyle}
+                            className="text-xl font-bold text-[#181816] block mt-0.5"
+                          >
+                            {drawnPersonLatestData?.pantsSize?.trim() || '—'}
+                          </strong>
+                        </div>
+                        <div className="p-3 text-center">
+                          <span className="text-[10px] uppercase tracking-wider text-[#5C5852] block">
+                            Calçado
+                          </span>
+                          <strong
+                            style={fontSerifStyle}
+                            className="text-xl font-bold text-[#181816] block mt-0.5"
+                          >
+                            {drawnPersonLatestData?.shoeSize?.trim() || '—'}
+                          </strong>
+                        </div>
                       </div>
-                      <div className="p-3 text-center">
-                        <span className="text-[10px] uppercase tracking-wider text-[#5C5852] block">
-                          Calça
-                        </span>
-                        <strong
-                          style={fontSerifStyle}
-                          className="text-xl font-bold text-[#181816] block mt-0.5"
-                        >
-                          {drawnPersonLatestData?.pantsSize || '—'}
-                        </strong>
-                      </div>
-                      <div className="p-3 text-center">
-                        <span className="text-[10px] uppercase tracking-wider text-[#5C5852] block">
-                          Calçado
-                        </span>
-                        <strong
-                          style={fontSerifStyle}
-                          className="text-xl font-bold text-[#181816] block mt-0.5"
-                        >
-                          {drawnPersonLatestData?.shoeSize || '—'}
-                        </strong>
-                      </div>
-                    </div>
+                    )}
 
-                    {/* Observações sempre visível */}
-                    <div className="p-3.5 bg-[#F3EFEA]/50 border border-[#DCD6CD] space-y-0.5">
-                      <span className="text-[10px] uppercase tracking-[0.15em] text-[#8C6D53] font-bold block">
-                        Observações adicionais
-                      </span>
-                      <p
-                        className={`text-sm ${
-                          drawnNotes ? 'text-[#181816]' : 'italic text-[#5C5852]'
-                        }`}
-                      >
-                        {drawnNotes || 'Nenhuma observação informada'}
-                      </p>
-                    </div>
+                    {/* Observações adicionais (Exibido somente quando preenchido) */}
+                    {Boolean(drawnNotes?.trim()) && (
+                      <div className="p-3.5 bg-[#F3EFEA]/50 border border-[#DCD6CD] space-y-0.5">
+                        <span className="text-[10px] uppercase tracking-[0.15em] text-[#8C6D53] font-bold block">
+                          Observações adicionais
+                        </span>
+                        <p className="text-sm text-[#181816]">
+                          {drawnNotes.trim()}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
               </section>
@@ -2580,9 +2638,20 @@ export default function App() {
             >
               {String(participants.length).padStart(2, '0')}
             </div>
-            <span className="text-xs text-[#5C5852]">
-              {hintsFilledCount} com dicas de presente salvas
-            </span>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-[#5C5852]">
+                {hintsFilledCount} com dicas de presente salvas
+              </span>
+              {hintsFilledCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearAllGiftHints}
+                  className="text-[10px] uppercase tracking-wider font-semibold text-[#8E3B36] hover:underline cursor-pointer shrink-0"
+                >
+                  Limpar dicas
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="lg:col-span-3 p-6 sm:p-8 flex flex-col justify-between">
@@ -2707,6 +2776,16 @@ export default function App() {
                     Carregar Exemplos
                   </button>
                 )}
+
+                <button
+                  type="button"
+                  disabled={isBusy || hintsFilledCount === 0}
+                  onClick={handleClearAllGiftHints}
+                  className="px-4 py-3 border border-[#8E3B36] text-[#8E3B36] hover:bg-[#8E3B36] hover:text-[#FAF8F5] disabled:opacity-40 text-xs uppercase tracking-[0.18em] font-semibold flex items-center gap-2 transition cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Limpar Dicas de Presentes
+                </button>
 
                 <button
                   type="button"
