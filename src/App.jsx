@@ -2378,8 +2378,8 @@ export default function App() {
                 >
                   <span>
                     {iHaveFilledMyHints
-                      ? '🎁 EDITAR MINHAS DICAS DE PRESENTE'
-                      : '🎁 DAR MINHAS DICAS DE PRESENTE'}
+                      ? 'MINHAS DICAS DE PRESENTE'
+                      : 'MINHAS DICAS DE PRESENTE'}
                   </span>
                   <ArrowRight className="w-4 h-4 text-[#8C6D53] shrink-0" />
                 </button>
