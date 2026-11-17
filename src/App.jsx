@@ -1468,15 +1468,18 @@ export default function App() {
     });
   };
 
-  const scrollToMyHintsAndFocus = () => {
+  const openMyHintsTab = () => {
     setHasScrolledMobile(true);
-    myHintsSectionRef.current?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start',
-    });
+    setMyHintsModalOpen(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
     setTimeout(() => {
       myWantInputRef.current?.focus();
-    }, 450);
+    }, 250);
+  };
+
+  const closeMyHintsTab = () => {
+    setMyHintsModalOpen(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleSaveMyGiftHints = async (e) => {
@@ -1509,6 +1512,7 @@ export default function App() {
       );
 
       setMyHintsModalOpen(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       showToast(
         'Suas dicas foram salvas e já estão visíveis para quem tirou você!'
       );
@@ -1996,35 +2000,156 @@ export default function App() {
                 Abrindo seu sorteio...
               </h2>
             </div>
-          ) : (
-            <>
-              {/* 1. CARTÃO PRINCIPAL ENXUTO: QUEM VOCÊ TIROU */}
-              <section className="border border-[#181816] bg-[#FAF8F5] p-5 sm:p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs uppercase tracking-[0.2em] text-[#8C6D53] font-bold">
-                    Você tirou:
+          ) : myHintsModalOpen ? (
+            /* ABA SEPARADA: DAR MINHAS DICAS DE PRESENTE */
+            <section
+              ref={myHintsSectionRef}
+              id="minhas-dicas"
+              className="border border-[#181816] bg-[#F3EFEA] p-5 sm:p-6 space-y-5"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-[#DCD6CD]">
+                <button
+                  type="button"
+                  onClick={closeMyHintsTab}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-[#181816] bg-[#FAF8F5] text-xs font-semibold text-[#181816] hover:bg-[#181816] hover:text-[#FAF8F5] transition cursor-pointer"
+                >
+                  <span>← Voltar ao Amigo Secreto</span>
+                </button>
+
+                {iHaveFilledMyHints && (
+                  <span className="px-2.5 py-1 bg-[#2C4035] text-[#FAF8F5] text-[10px] uppercase tracking-wider font-semibold">
+                    ✓ Já preenchido
                   </span>
+                )}
+              </div>
+
+              <div>
+                <h2
+                  style={fontSerifStyle}
+                  className="text-2xl sm:text-3xl font-semibold text-[#181816]"
+                >
+                  Minhas Dicas de Presente
+                </h2>
+                <p className="text-xs text-[#5C5852] mt-1 leading-relaxed">
+                  Preencha o que você gostaria de ganhar e seus tamanhos. Essas
+                  informações aparecerão automaticamente para a pessoa que tirou
+                  você.
+                </p>
+              </div>
+
+              <form onSubmit={handleSaveMyGiftHints} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-[#2C4035] mb-1">
+                    O que você gostaria de ganhar?
+                  </label>
+                  <textarea
+                    ref={myWantInputRef}
+                    rows={3}
+                    value={myWant}
+                    onChange={(e) => setMyWant(e.target.value)}
+                    placeholder="Ex: Perfume, livro, camisa, bolsa, chocolates..."
+                    className="w-full px-3.5 py-2.5 bg-[#FAF8F5] border border-[#DCD6CD] focus:border-[#181816] text-sm text-[#181816] outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#8E3B36] mb-1">
+                    O que você não gostaria de ganhar? (Opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={myDontWant}
+                    onChange={(e) => setMyDontWant(e.target.value)}
+                    placeholder="Ex: Perfumes doces, roupas escuras..."
+                    className="w-full px-3.5 py-2.5 bg-[#FAF8F5] border border-[#DCD6CD] focus:border-[#181816] text-sm text-[#181816] outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-3 gap-2.5">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-[#5C5852] mb-1">
+                      Camisa/Blusa
+                    </label>
+                    <input
+                      type="text"
+                      value={myShirt}
+                      onChange={(e) => setMyShirt(e.target.value)}
+                      placeholder="P, M, G"
+                      className="w-full px-3 py-2.5 bg-[#FAF8F5] border border-[#DCD6CD] focus:border-[#181816] text-sm font-semibold text-center outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-[#5C5852] mb-1">
+                      Calça
+                    </label>
+                    <input
+                      type="text"
+                      value={myPants}
+                      onChange={(e) => setMyPants(e.target.value)}
+                      placeholder="38, 42"
+                      className="w-full px-3 py-2.5 bg-[#FAF8F5] border border-[#DCD6CD] focus:border-[#181816] text-sm font-semibold text-center outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-[#5C5852] mb-1">
+                      Calçado
+                    </label>
+                    <input
+                      type="text"
+                      value={myShoe}
+                      onChange={(e) => setMyShoe(e.target.value)}
+                      placeholder="37, 40"
+                      className="w-full px-3 py-2.5 bg-[#FAF8F5] border border-[#DCD6CD] focus:border-[#181816] text-sm font-semibold text-center outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#5C5852] mb-1">
+                    Observações ou cores preferidas (Opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={myNotes}
+                    onChange={(e) => setMyNotes(e.target.value)}
+                    placeholder="Ex: Tons neutros, dourado, romance..."
+                    className="w-full px-3.5 py-2.5 bg-[#FAF8F5] border border-[#DCD6CD] focus:border-[#181816] text-sm text-[#181816] outline-none"
+                  />
+                </div>
+
+                <div className="pt-2 space-y-2.5">
+                  <button
+                    type="submit"
+                    disabled={savingMyHints}
+                    className="w-full py-4 px-5 bg-[#2C4035] hover:bg-[#181816] text-[#FAF8F5] border border-[#181816] uppercase tracking-[0.15em] text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer"
+                  >
+                    <Gift className="w-4 h-4 text-[#8C6D53]" />
+                    <span>
+                      {savingMyHints
+                        ? 'SALVANDO SUAS DICAS...'
+                        : 'SALVAR MINHAS DICAS DE PRESENTE'}
+                    </span>
+                  </button>
+
                   <button
                     type="button"
-                    onClick={() => setIsDrawnNameVisible((v) => !v)}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 border border-[#DCD6CD] bg-[#F3EFEA] text-[11px] text-[#5C5852] hover:text-[#181816] transition cursor-pointer"
-                    title={
-                      isDrawnNameVisible ? 'Ocultar nome' : 'Mostrar nome'
-                    }
+                    onClick={closeMyHintsTab}
+                    className="w-full py-3 px-4 border border-[#DCD6CD] bg-[#FAF8F5] text-xs font-semibold text-[#5C5852] hover:text-[#181816] transition cursor-pointer"
                   >
-                    {isDrawnNameVisible ? (
-                      <>
-                        <EyeOff className="w-3.5 h-3.5" />
-                        <span>Ocultar</span>
-                      </>
-                    ) : (
-                      <>
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>Mostrar</span>
-                      </>
-                    )}
+                    Cancelar e voltar
                   </button>
                 </div>
+              </form>
+            </section>
+          ) : (
+            <>
+              {/* 1. CARTÃO PRINCIPAL: QUEM VOCÊ TIROU */}
+              <section className="border border-[#181816] bg-[#FAF8F5] p-5 sm:p-6 space-y-4">
+                <p className="text-[11px] sm:text-xs uppercase tracking-[0.18em] text-[#8C6D53] font-bold text-center leading-relaxed">
+                  NESTE NATAL, A PESSOA QUE VOCÊ TIROU NO AMIGO SECRETO É:
+                </p>
 
                 <div className="border border-[#DCD6CD] bg-[#F3EFEA] px-4 py-6 text-center">
                   <div
@@ -2033,45 +2158,47 @@ export default function App() {
                   >
                     {isSimulatingParticipant
                       ? '[ Nome Oculto no Teste ]'
-                      : isDrawnNameVisible
-                      ? drawnName
-                      : '••••••••••••'}
+                      : drawnName}
                   </div>
                 </div>
 
-                {/* ATALHOS RÁPIDOS DE ROLAGEM (DEIXA CLARO QUE HÁ MAIS CONTEÚDO ABAIXO) */}
-                <div className="grid grid-cols-1 gap-2 pt-1">
+                {/* BOTÕES DE AÇÃO: ABRIR ABA DE DAR DICAS OU ROLAR PARA VER DICAS DO SORTEADO */}
+                <div className="grid grid-cols-1 gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={openMyHintsTab}
+                    className="w-full py-4 px-4 bg-[#2C4035] hover:bg-[#181816] text-[#FAF8F5] text-xs uppercase tracking-[0.14em] font-bold flex items-center justify-between transition cursor-pointer"
+                  >
+                    <span>
+                      {iHaveFilledMyHints
+                        ? '🎁 EDITAR MINHAS DICAS DE PRESENTE'
+                        : '🎁 DAR MINHAS DICAS DE PRESENTE'}
+                    </span>
+                    <ArrowRight className="w-4 h-4 text-[#8C6D53]" />
+                  </button>
+
                   <button
                     type="button"
                     onClick={scrollToFriendHints}
                     className="w-full py-3 px-4 border border-[#DCD6CD] bg-[#F3EFEA]/70 hover:bg-[#F3EFEA] text-[#181816] text-xs font-semibold flex items-center justify-between transition cursor-pointer"
                   >
                     <span>
-                      Ver dicas de{' '}
+                      Ver dicas de presente de{' '}
                       {isSimulatingParticipant ? 'seu sorteado' : drawnFirstName}{' '}
                       ↓
                     </span>
                     <ChevronDown className="w-4 h-4 text-[#8C6D53] animate-bounce" />
                   </button>
-
-                  <button
-                    type="button"
-                    onClick={scrollToMyHintsAndFocus}
-                    className="w-full py-3.5 px-4 bg-[#2C4035] hover:bg-[#181816] text-[#FAF8F5] text-xs font-semibold tracking-wide flex items-center justify-between transition cursor-pointer"
-                  >
-                    <span>🎁 Dar minhas dicas de presente ↓</span>
-                    <ChevronDown className="w-4 h-4 text-[#8C6D53] animate-bounce" />
-                  </button>
                 </div>
               </section>
 
-              {/* 2. DICAS DE PRESENTE DA PESSOA SORTEADA */}
+              {/* 2. DICAS DE PRESENTE DA PESSOA SORTEADA (CAMPOS SEMPRE VISÍVEIS) */}
               <section
                 ref={friendHintsRef}
                 id="dicas-amigo"
                 className="border border-[#DCD6CD] bg-[#FAF8F5] p-5 sm:p-6 space-y-4 scroll-mt-4"
               >
-                <div className="pb-3 border-b border-[#DCD6CD]">
+                <div className="pb-3 border-b border-[#DCD6CD] flex items-center justify-between gap-2">
                   <h2
                     style={fontSerifStyle}
                     className="text-2xl font-semibold text-[#181816]"
@@ -2079,47 +2206,55 @@ export default function App() {
                     Dicas de presente de{' '}
                     {isSimulatingParticipant ? 'seu sorteado' : drawnName}
                   </h2>
+
+                  {!isSimulatingParticipant && !drawnHasHints && (
+                    <span className="px-2 py-0.5 bg-[#F3EFEA] border border-[#DCD6CD] text-[10px] uppercase tracking-wider text-[#8C6D53] font-semibold shrink-0">
+                      Aguardando dicas
+                    </span>
+                  )}
                 </div>
 
                 {isSimulatingParticipant ? (
                   <p className="text-sm text-[#5C5852] py-2">
                     Oculto no modo de teste administrativo.
                   </p>
-                ) : !drawnHasHints ? (
-                  <div className="p-4 bg-[#F3EFEA]/70 border border-dashed border-[#8C6D53] space-y-1.5">
-                    <p className="text-sm font-semibold text-[#181816]">
-                      {drawnFirstName} ainda não preencheu as dicas.
-                    </p>
-                    <p className="text-xs text-[#5C5852] leading-relaxed">
-                      Assim que {drawnFirstName} salvar o que gostaria de
-                      ganhar, aparecerá aqui automaticamente.
-                    </p>
-                  </div>
                 ) : (
                   <div className="space-y-3.5">
                     {/* Gostaria de ganhar */}
                     <div className="p-4 bg-[#F3EFEA] border-l-2 border-[#2C4035] space-y-1">
                       <span className="text-[11px] uppercase tracking-[0.15em] text-[#2C4035] font-bold block">
-                        Gostaria de ganhar
+                        O que gostaria de ganhar
                       </span>
-                      <p className="text-base sm:text-lg font-semibold text-[#181816] leading-snug">
-                        {drawnPersonLatestData?.wantToGet || 'Não informado'}
+                      <p
+                        className={`text-base sm:text-lg leading-snug ${
+                          drawnPersonLatestData?.wantToGet
+                            ? 'font-semibold text-[#181816]'
+                            : 'text-sm italic text-[#5C5852]'
+                        }`}
+                      >
+                        {drawnPersonLatestData?.wantToGet ||
+                          'Ainda não informado pelo seu amigo secreto'}
                       </p>
                     </div>
 
-                    {/* Prefere evitar */}
-                    {drawnPersonLatestData?.dontWantToGet && (
-                      <div className="p-3.5 bg-[#FAF8F5] border border-[#DCD6CD] border-l-2 border-l-[#8E3B36] space-y-0.5">
-                        <span className="text-[11px] uppercase tracking-[0.15em] text-[#8E3B36] font-bold block">
-                          Prefere evitar
-                        </span>
-                        <p className="text-sm font-medium text-[#181816]">
-                          {drawnPersonLatestData.dontWantToGet}
-                        </p>
-                      </div>
-                    )}
+                    {/* O que não gostaria de ganhar */}
+                    <div className="p-3.5 bg-[#FAF8F5] border border-[#DCD6CD] border-l-2 border-l-[#8E3B36] space-y-0.5">
+                      <span className="text-[11px] uppercase tracking-[0.15em] text-[#8E3B36] font-bold block">
+                        O que não gostaria de ganhar
+                      </span>
+                      <p
+                        className={`text-sm ${
+                          drawnPersonLatestData?.dontWantToGet
+                            ? 'font-medium text-[#181816]'
+                            : 'italic text-[#5C5852]'
+                        }`}
+                      >
+                        {drawnPersonLatestData?.dontWantToGet ||
+                          'Nenhuma restrição informada'}
+                      </p>
+                    </div>
 
-                    {/* Tamanhos em grade compacta para celular */}
+                    {/* Tamanhos em grade sempre visível */}
                     <div className="grid grid-cols-3 border border-[#DCD6CD] divide-x divide-[#DCD6CD] bg-[#FAF8F5]">
                       <div className="p-3 text-center">
                         <span className="text-[10px] uppercase tracking-wider text-[#5C5852] block">
@@ -2156,150 +2291,30 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Observações */}
-                    {drawnNotes && (
-                      <div className="p-3.5 bg-[#F3EFEA]/50 border border-[#DCD6CD] space-y-0.5">
-                        <span className="text-[10px] uppercase tracking-[0.15em] text-[#8C6D53] font-bold block">
-                          Observações
-                        </span>
-                        <p className="text-sm text-[#181816]">{drawnNotes}</p>
-                      </div>
-                    )}
+                    {/* Observações sempre visível */}
+                    <div className="p-3.5 bg-[#F3EFEA]/50 border border-[#DCD6CD] space-y-0.5">
+                      <span className="text-[10px] uppercase tracking-[0.15em] text-[#8C6D53] font-bold block">
+                        Observações adicionais
+                      </span>
+                      <p
+                        className={`text-sm ${
+                          drawnNotes ? 'text-[#181816]' : 'italic text-[#5C5852]'
+                        }`}
+                      >
+                        {drawnNotes || 'Nenhuma observação informada'}
+                      </p>
+                    </div>
                   </div>
                 )}
-              </section>
-
-              {/* 3. SUAS PRÓPRIAS DICAS DE PRESENTE (FORMULÁRIO DIRETO NO CELULAR) */}
-              <section
-                ref={myHintsSectionRef}
-                id="minhas-dicas"
-                className="border border-[#181816] bg-[#F3EFEA] p-5 sm:p-6 space-y-4 scroll-mt-4"
-              >
-                <div className="pb-3 border-b border-[#DCD6CD] flex items-center justify-between gap-2">
-                  <div>
-                    <h2
-                      style={fontSerifStyle}
-                      className="text-2xl font-semibold text-[#181816]"
-                    >
-                      Suas dicas de presente
-                    </h2>
-                    <p className="text-xs text-[#5C5852] mt-0.5 leading-relaxed">
-                      Preencha abaixo para ajudar quem tirou você (o seu amigo
-                      secreto não saberá quem é você).
-                    </p>
-                  </div>
-                  {iHaveFilledMyHints && (
-                    <span className="px-2.5 py-1 bg-[#2C4035] text-[#FAF8F5] text-[10px] uppercase tracking-wider font-semibold shrink-0">
-                      ✓ Salvo
-                    </span>
-                  )}
-                </div>
-
-                <form onSubmit={handleSaveMyGiftHints} className="space-y-3.5">
-                  <div>
-                    <label className="block text-xs font-semibold text-[#2C4035] mb-1">
-                      O que você gostaria de ganhar?
-                    </label>
-                    <textarea
-                      ref={myWantInputRef}
-                      rows={2}
-                      value={myWant}
-                      onChange={(e) => setMyWant(e.target.value)}
-                      placeholder="Ex: Perfume, livro, camisa, bolsa, chocolates..."
-                      className="w-full px-3.5 py-2.5 bg-[#FAF8F5] border border-[#DCD6CD] focus:border-[#181816] text-sm text-[#181816] outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-[#8E3B36] mb-1">
-                      O que prefere evitar? (Opcional)
-                    </label>
-                    <input
-                      type="text"
-                      value={myDontWant}
-                      onChange={(e) => setMyDontWant(e.target.value)}
-                      placeholder="Ex: Perfumes doces, roupas escuras..."
-                      className="w-full px-3.5 py-2.5 bg-[#FAF8F5] border border-[#DCD6CD] focus:border-[#181816] text-sm text-[#181816] outline-none"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2.5">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-[#5C5852] mb-1">
-                        Camisa/Blusa
-                      </label>
-                      <input
-                        type="text"
-                        value={myShirt}
-                        onChange={(e) => setMyShirt(e.target.value)}
-                        placeholder="P, M, G"
-                        className="w-full px-3 py-2.5 bg-[#FAF8F5] border border-[#DCD6CD] focus:border-[#181816] text-sm font-semibold text-center outline-none"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-semibold text-[#5C5852] mb-1">
-                        Calça
-                      </label>
-                      <input
-                        type="text"
-                        value={myPants}
-                        onChange={(e) => setMyPants(e.target.value)}
-                        placeholder="38, 42"
-                        className="w-full px-3 py-2.5 bg-[#FAF8F5] border border-[#DCD6CD] focus:border-[#181816] text-sm font-semibold text-center outline-none"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-semibold text-[#5C5852] mb-1">
-                        Calçado
-                      </label>
-                      <input
-                        type="text"
-                        value={myShoe}
-                        onChange={(e) => setMyShoe(e.target.value)}
-                        placeholder="37, 40"
-                        className="w-full px-3 py-2.5 bg-[#FAF8F5] border border-[#DCD6CD] focus:border-[#181816] text-sm font-semibold text-center outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-[#5C5852] mb-1">
-                      Observações ou cores preferidas (Opcional)
-                    </label>
-                    <input
-                      type="text"
-                      value={myNotes}
-                      onChange={(e) => setMyNotes(e.target.value)}
-                      placeholder="Ex: Tons neutros, dourado, romance..."
-                      className="w-full px-3.5 py-2.5 bg-[#FAF8F5] border border-[#DCD6CD] focus:border-[#181816] text-sm text-[#181816] outline-none"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={savingMyHints}
-                    className="w-full py-4 px-5 bg-[#2C4035] hover:bg-[#181816] text-[#FAF8F5] border border-[#181816] uppercase tracking-[0.15em] text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer"
-                  >
-                    <Gift className="w-4 h-4 text-[#8C6D53]" />
-                    <span>
-                      {savingMyHints
-                        ? 'SALVANDO SUAS DICAS...'
-                        : iHaveFilledMyHints
-                        ? 'ATUALIZAR MINHAS DICAS DE PRESENTE'
-                        : '🎁 SALVAR MINHAS DICAS DE PRESENTE'}
-                    </span>
-                  </button>
-                </form>
               </section>
             </>
           )}
         </main>
 
-        {/* INDICADOR FLUTUANTE DE SCROLL NO CELULAR (SOME ASSIM QUE A PESSOA ROLA A TELA) */}
+        {/* INDICADOR FLUTUANTE DE SCROLL NO CELULAR (SOME ASSIM QUE A PESSOA ROLA A TELA OU ABRE A ABA DE DICAS) */}
         {currentParticipantTokenDoc &&
           !isDecryptingLink &&
+          !myHintsModalOpen &&
           !hasScrolledMobile && (
             <div className="fixed bottom-3 inset-x-0 z-40 flex justify-center px-4 pointer-events-none">
               <button
@@ -2307,7 +2322,7 @@ export default function App() {
                 onClick={scrollToFriendHints}
                 className="pointer-events-auto inline-flex items-center gap-2 px-4 py-2.5 bg-[#181816] text-[#FAF8F5] border border-[#8C6D53] shadow-lg text-xs font-medium tracking-wide cursor-pointer"
               >
-                <span>Role para baixo para ver e dar dicas</span>
+                <span>Role para baixo para ver as dicas de presente</span>
                 <ChevronDown className="w-4 h-4 text-[#8C6D53] animate-bounce" />
               </button>
             </div>
