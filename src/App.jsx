@@ -601,6 +601,7 @@ export default function App() {
   const [isDrawnNameVisible, setIsDrawnNameVisible] = useState(true);
   const [hasScrolledMobile, setHasScrolledMobile] = useState(false);
   const [myHintsModalOpen, setMyHintsModalOpen] = useState(false);
+  const [friendHintsModalOpen, setFriendHintsModalOpen] = useState(false);
   const [myWant, setMyWant] = useState('');
   const [myDontWant, setMyDontWant] = useState('');
   const [myShirt, setMyShirt] = useState('');
@@ -1528,6 +1529,7 @@ export default function App() {
 
   const openMyHintsTab = () => {
     setHasScrolledMobile(true);
+    setFriendHintsModalOpen(false);
     setMyHintsModalOpen(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     setTimeout(() => {
@@ -1537,6 +1539,18 @@ export default function App() {
 
   const closeMyHintsTab = () => {
     setMyHintsModalOpen(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const openFriendHintsTab = () => {
+    setHasScrolledMobile(true);
+    setMyHintsModalOpen(false);
+    setFriendHintsModalOpen(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const closeFriendHintsTab = () => {
+    setFriendHintsModalOpen(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -2201,10 +2215,135 @@ export default function App() {
                 </div>
               </form>
             </section>
+          ) : friendHintsModalOpen ? (
+            /* ABA SEPARADA: DICAS DE PRESENTE DO AMIGO SECRETO */
+            <section
+              ref={friendHintsRef}
+              id="dicas-amigo"
+              className="border border-[#181816] bg-[#FAF8F5] p-5 sm:p-6 space-y-5"
+            >
+              <div className="pb-3 border-b border-[#DCD6CD] flex items-center justify-between gap-2">
+                <h2
+                  style={fontSerifStyle}
+                  className="text-2xl sm:text-3xl font-semibold text-[#181816]"
+                >
+                  Dicas de presente de{' '}
+                  {isSimulatingParticipant ? 'seu sorteado' : drawnName}
+                </h2>
+
+                {!isSimulatingParticipant && !drawnHasHints && (
+                  <span className="px-2 py-0.5 bg-[#F3EFEA] border border-[#DCD6CD] text-[10px] uppercase tracking-wider text-[#8C6D53] font-semibold shrink-0">
+                    Aguardando dicas
+                  </span>
+                )}
+              </div>
+
+              {isSimulatingParticipant ? (
+                <p className="text-sm text-[#5C5852] py-2">
+                  Oculto no modo de teste administrativo.
+                </p>
+              ) : (
+                <div className="space-y-3.5">
+                  {/* Gostaria de ganhar (Sempre exibido) */}
+                  <div className="p-4 bg-[#F3EFEA] border-l-2 border-[#2C4035] space-y-1">
+                    <span className="text-[11px] uppercase tracking-[0.15em] text-[#2C4035] font-bold block">
+                      O que gostaria de ganhar
+                    </span>
+                    <p
+                      className={`text-base sm:text-lg leading-snug ${
+                        drawnPersonLatestData?.wantToGet?.trim()
+                          ? 'font-semibold text-[#181816]'
+                          : 'text-sm italic text-[#5C5852]'
+                      }`}
+                    >
+                      {drawnPersonLatestData?.wantToGet?.trim() ||
+                        'Ainda não informado pelo seu amigo secreto'}
+                    </p>
+                  </div>
+
+                  {/* O que não gostaria de ganhar (Exibido somente quando preenchido) */}
+                  {Boolean(drawnPersonLatestData?.dontWantToGet?.trim()) && (
+                    <div className="p-3.5 bg-[#FAF8F5] border border-[#DCD6CD] border-l-2 border-l-[#8E3B36] space-y-0.5">
+                      <span className="text-[11px] uppercase tracking-[0.15em] text-[#8E3B36] font-bold block">
+                        O que não gostaria de ganhar
+                      </span>
+                      <p className="text-sm font-medium text-[#181816]">
+                        {drawnPersonLatestData.dontWantToGet.trim()}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Tamanhos em grade (Exibido somente quando pelo menos um tamanho for preenchido) */}
+                  {Boolean(
+                    drawnPersonLatestData?.shirtSize?.trim() ||
+                      drawnPersonLatestData?.pantsSize?.trim() ||
+                      drawnPersonLatestData?.shoeSize?.trim()
+                  ) && (
+                    <div className="grid grid-cols-3 border border-[#DCD6CD] divide-x divide-[#DCD6CD] bg-[#FAF8F5]">
+                      <div className="p-3 text-center">
+                        <span className="text-[10px] uppercase tracking-wider text-[#5C5852] block">
+                          Camisa/Blusa
+                        </span>
+                        <strong
+                          style={fontSerifStyle}
+                          className="text-xl font-bold text-[#181816] block mt-0.5"
+                        >
+                          {drawnPersonLatestData?.shirtSize?.trim() || '—'}
+                        </strong>
+                      </div>
+                      <div className="p-3 text-center">
+                        <span className="text-[10px] uppercase tracking-wider text-[#5C5852] block">
+                          Calça
+                        </span>
+                        <strong
+                          style={fontSerifStyle}
+                          className="text-xl font-bold text-[#181816] block mt-0.5"
+                        >
+                          {drawnPersonLatestData?.pantsSize?.trim() || '—'}
+                        </strong>
+                      </div>
+                      <div className="p-3 text-center">
+                        <span className="text-[10px] uppercase tracking-wider text-[#5C5852] block">
+                          Calçado
+                        </span>
+                        <strong
+                          style={fontSerifStyle}
+                          className="text-xl font-bold text-[#181816] block mt-0.5"
+                        >
+                          {drawnPersonLatestData?.shoeSize?.trim() || '—'}
+                        </strong>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Observações adicionais (Exibido somente quando preenchido) */}
+                  {Boolean(drawnNotes?.trim()) && (
+                    <div className="p-3.5 bg-[#F3EFEA]/50 border border-[#DCD6CD] space-y-0.5">
+                      <span className="text-[10px] uppercase tracking-[0.15em] text-[#8C6D53] font-bold block">
+                        Observações adicionais
+                      </span>
+                      <p className="text-sm text-[#181816]">
+                        {drawnNotes.trim()}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="pt-2 border-t border-[#DCD6CD]">
+                <button
+                  type="button"
+                  onClick={closeFriendHintsTab}
+                  className="w-full py-4 px-4 bg-[#181816] hover:bg-[#2C4035] text-[#FAF8F5] text-xs uppercase tracking-[0.16em] font-bold flex items-center justify-center gap-2 transition cursor-pointer"
+                >
+                  <span>← VOLTAR PARA A TELA INICIAL</span>
+                </button>
+              </div>
+            </section>
           ) : (
             <>
               {/* 1. CARTÃO PRINCIPAL: QUEM VOCÊ TIROU */}
-              <section className="border border-[#181816] bg-[#FAF8F5] p-5 sm:p-6 space-y-4">
+              <section className="border border-[#181816] bg-[#FAF8F5] p-5 sm:p-6 space-y-3.5">
                 <p className="text-[11px] sm:text-xs uppercase tracking-[0.18em] text-[#8C6D53] font-bold text-center leading-relaxed">
                   NESTE NATAL, A PESSOA QUE VOCÊ TIROU NO AMIGO SECRETO É:
                 </p>
@@ -2220,138 +2359,37 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* BOTÃO: VER A DICA DE PRESENTE DO SEU AMIGO (MESMA LARGURA E COR DO FUNDO DO NOME) */}
+                <button
+                  type="button"
+                  onClick={openFriendHintsTab}
+                  className="w-full py-4 px-4 border border-[#DCD6CD] hover:border-[#181816] bg-[#F3EFEA] text-[#181816] text-xs uppercase tracking-[0.14em] font-bold flex items-center justify-between transition cursor-pointer"
+                >
+                  <span>VER A DICA DE PRESENTE DO SEU AMIGO</span>
+                  <ArrowRight className="w-4 h-4 text-[#8C6D53] shrink-0" />
+                </button>
+
                 {/* BOTÃO DE AÇÃO: ABRIR ABA DE DAR DICAS */}
-                <div className="pt-1">
-                  <button
-                    type="button"
-                    onClick={openMyHintsTab}
-                    className="w-full py-4 px-4 bg-[#2C4035] hover:bg-[#181816] text-[#FAF8F5] text-xs uppercase tracking-[0.14em] font-bold flex items-center justify-between transition cursor-pointer"
-                  >
-                    <span>
-                      {iHaveFilledMyHints
-                        ? ' DICAS DE PRESENTE'
-                        : ' DICAS DE PRESENTE'}
-                    </span>
-                    <ArrowRight className="w-4 h-4 text-[#8C6D53]" />
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={openMyHintsTab}
+                  className="w-full py-4 px-4 bg-[#2C4035] hover:bg-[#181816] text-[#FAF8F5] text-xs uppercase tracking-[0.14em] font-bold flex items-center justify-between transition cursor-pointer"
+                >
+                  <span>
+                    {iHaveFilledMyHints
+                      ? '🎁 EDITAR MINHAS DICAS DE PRESENTE'
+                      : '🎁 DAR MINHAS DICAS DE PRESENTE'}
+                  </span>
+                  <ArrowRight className="w-4 h-4 text-[#8C6D53] shrink-0" />
+                </button>
               </section>
 
-              {/* 2. DICAS DE PRESENTE DA PESSOA SORTEADA (CAMPOS SEMPRE VISÍVEIS) */}
-              {/* 2. DICAS DE PRESENTE DA PESSOA SORTEADA */}
-              <section
-                ref={friendHintsRef}
-                id="dicas-amigo"
-                className="border border-[#DCD6CD] bg-[#FAF8F5] p-5 sm:p-6 space-y-4 scroll-mt-4"
-              >
-                <div className="pb-3 border-b border-[#DCD6CD] flex items-center justify-between gap-2">
-                  <h2
-                    style={fontSerifStyle}
-                    className="text-2xl font-semibold text-[#181816]"
-                  >
-                    Dicas de presente de{' '}
-                    {isSimulatingParticipant ? 'seu sorteado' : drawnName}
-                  </h2>
-
-                  {!isSimulatingParticipant && !drawnHasHints && (
-                    <span className="px-2 py-0.5 bg-[#F3EFEA] border border-[#DCD6CD] text-[10px] uppercase tracking-wider text-[#8C6D53] font-semibold shrink-0">
-                      Aguardando dicas
-                    </span>
-                  )}
+              {/* 2. ILUSTRAÇÃO DA ÁRVORE DE NATAL MINIMALISTA CENTRALIZADA */}
+              <div className="pt-3 pb-2 flex justify-center">
+                <div className="w-full max-w-[250px] sm:max-w-[280px] mx-auto">
+                  <MinimalBotanicalFrameSVG className="w-full h-auto" />
                 </div>
-
-                {isSimulatingParticipant ? (
-                  <p className="text-sm text-[#5C5852] py-2">
-                    Oculto no modo de teste administrativo.
-                  </p>
-                ) : (
-                  <div className="space-y-3.5">
-                    {/* Gostaria de ganhar (Sempre exibido) */}
-                    <div className="p-4 bg-[#F3EFEA] border-l-2 border-[#2C4035] space-y-1">
-                      <span className="text-[11px] uppercase tracking-[0.15em] text-[#2C4035] font-bold block">
-                        O que gostaria de ganhar
-                      </span>
-                      <p
-                        className={`text-base sm:text-lg leading-snug ${
-                          drawnPersonLatestData?.wantToGet?.trim()
-                            ? 'font-semibold text-[#181816]'
-                            : 'text-sm italic text-[#5C5852]'
-                        }`}
-                      >
-                        {drawnPersonLatestData?.wantToGet?.trim() ||
-                          'Ainda não informado pelo seu amigo secreto'}
-                      </p>
-                    </div>
-
-                    {/* O que não gostaria de ganhar (Exibido somente quando preenchido) */}
-                    {Boolean(drawnPersonLatestData?.dontWantToGet?.trim()) && (
-                      <div className="p-3.5 bg-[#FAF8F5] border border-[#DCD6CD] border-l-2 border-l-[#8E3B36] space-y-0.5">
-                        <span className="text-[11px] uppercase tracking-[0.15em] text-[#8E3B36] font-bold block">
-                          O que não gostaria de ganhar
-                        </span>
-                        <p className="text-sm font-medium text-[#181816]">
-                          {drawnPersonLatestData.dontWantToGet.trim()}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Tamanhos em grade (Exibido somente quando pelo menos um tamanho for preenchido) */}
-                    {Boolean(
-                      drawnPersonLatestData?.shirtSize?.trim() ||
-                        drawnPersonLatestData?.pantsSize?.trim() ||
-                        drawnPersonLatestData?.shoeSize?.trim()
-                    ) && (
-                      <div className="grid grid-cols-3 border border-[#DCD6CD] divide-x divide-[#DCD6CD] bg-[#FAF8F5]">
-                        <div className="p-3 text-center">
-                          <span className="text-[10px] uppercase tracking-wider text-[#5C5852] block">
-                            Camisa/Blusa
-                          </span>
-                          <strong
-                            style={fontSerifStyle}
-                            className="text-xl font-bold text-[#181816] block mt-0.5"
-                          >
-                            {drawnPersonLatestData?.shirtSize?.trim() || '—'}
-                          </strong>
-                        </div>
-                        <div className="p-3 text-center">
-                          <span className="text-[10px] uppercase tracking-wider text-[#5C5852] block">
-                            Calça
-                          </span>
-                          <strong
-                            style={fontSerifStyle}
-                            className="text-xl font-bold text-[#181816] block mt-0.5"
-                          >
-                            {drawnPersonLatestData?.pantsSize?.trim() || '—'}
-                          </strong>
-                        </div>
-                        <div className="p-3 text-center">
-                          <span className="text-[10px] uppercase tracking-wider text-[#5C5852] block">
-                            Calçado
-                          </span>
-                          <strong
-                            style={fontSerifStyle}
-                            className="text-xl font-bold text-[#181816] block mt-0.5"
-                          >
-                            {drawnPersonLatestData?.shoeSize?.trim() || '—'}
-                          </strong>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Observações adicionais (Exibido somente quando preenchido) */}
-                    {Boolean(drawnNotes?.trim()) && (
-                      <div className="p-3.5 bg-[#F3EFEA]/50 border border-[#DCD6CD] space-y-0.5">
-                        <span className="text-[10px] uppercase tracking-[0.15em] text-[#8C6D53] font-bold block">
-                          Observações adicionais
-                        </span>
-                        <p className="text-sm text-[#181816]">
-                          {drawnNotes.trim()}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </section>
+              </div>
             </>
           )}
         </main>
